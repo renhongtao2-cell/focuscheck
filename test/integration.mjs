@@ -51,15 +51,30 @@ const AI_REPORT = {
   strategies: [1, 2, 3, 4, 5, 6].map(i => ({ title: "AI_STRAT_" + i, body: "AI strat body " + i }))
 };
 
-function makeDom({ apiEndpoint, fetchImpl, url, storedRef }) {
+/*
+ * A real set of answers, so a test can look like a visitor who has taken the
+ * assessment without using ?sample=. Sample URLs are preview mode and skip the
+ * network entirely, so they cannot exercise the paid path.
+ */
+const ANSWERS = {
+  1: 3, 2: 3, 3: 3, 4: 3, 5: 2, 6: 2, 7: 3, 8: 3, 9: 3,
+  10: 3, 11: 3, 12: 2, 13: 2, 14: 2, 15: 2, 16: 2, 17: 2, 18: 2
+};
+
+function makeDom({ apiEndpoint, fetchImpl, url, storedRef, answers }) {
   const calls = [];
   const dom = new JSDOM(buildHtml(apiEndpoint), {
-    url: url || "https://example.com/report.html?sample=inattentive&unlocked=1",
+    // No ?sample= by default. A sample URL is preview mode, which is unlocked
+    // and never calls the network — the opposite of what these tests need.
+    url: url || "https://example.com/report.html",
     runScripts: "dangerously",
     pretendToBeVisual: true,
     virtualConsole: quietConsole(),
     beforeParse(window) {
       window.AbortController = AbortController;
+      if (answers) {
+        window.localStorage.setItem("focuscheck.answers.v1", JSON.stringify(answers));
+      }
       if (storedRef) window.localStorage.setItem("focuscheck.ref", storedRef);
       window.fetch = async (u, opts) => {
         calls.push({ url: String(u), body: opts && opts.body ? JSON.parse(opts.body) : null });
@@ -70,6 +85,13 @@ function makeDom({ apiEndpoint, fetchImpl, url, storedRef }) {
   return { dom, calls };
 }
 
+/* True when the paid section of the report is actually in the document. */
+const bodyPresent = (d) => !!d.querySelector(".rp-body");
+const paywallShown = (d) => {
+  const lock = d.getElementById("rpLock");
+  return !!lock && !lock.classList.contains("hidden") && lock.innerHTML.length > 0;
+};
+
 const tick = (ms) => new Promise(r => setTimeout(r, ms));
 
 const okResponse = () => new Response(JSON.stringify({
@@ -79,31 +101,95 @@ const okResponse = () => new Response(JSON.stringify({
   report: AI_REPORT
 }), { status: 200, headers: { "Content-Type": "application/json" } });
 
-/* 1 — the template report must render even with no AI at all */
+/* 1 — a visitor who has not paid gets the teaser, not the report */
 {
-  const { dom, calls } = makeDom({ apiEndpoint: "", fetchImpl: async () => { throw new Error("should not be called"); } });
+  const { dom, calls } = makeDom({
+    apiEndpoint: "",
+    answers: ANSWERS,
+    fetchImpl: async () => { throw new Error("should not be called"); }
+  });
   await tick(200);
   const d = dom.window.document;
-  check("no endpoint: no network call", calls.length === 0, calls.length);
-  check("no endpoint: cover rendered", d.getElementById("rpProfile").textContent.includes("Inattentive"),
+
+  check("locked: no network call without a reference", calls.length === 0, calls.length);
+
+  // The free tier: cover and the visual summary.
+  check("locked: cover rendered", d.getElementById("rpProfile").textContent.includes("Inattentive"),
     d.getElementById("rpProfile").textContent);
-  check("no endpoint: interpretation rendered", d.getElementById("rpInterp").innerHTML.length > 200);
-  check("no endpoint: areas rendered", d.getElementById("rpAreas").innerHTML.includes("Work and career"));
-  check("no endpoint: strategies rendered", d.getElementById("rpStrategies").innerHTML.includes("Externalise everything"));
-  check("no endpoint: 30-day plan rendered", d.getElementById("rpPlan").innerHTML.includes("Capture everything"));
-  check("no endpoint: appendix table rendered", d.getElementById("rpTable").innerHTML.includes("<tbody>"));
-  check("no endpoint: all 18 rows present", (d.getElementById("rpTable").innerHTML.match(/<tr>/g) || []).length === 19);
+  check("locked: visual summary rendered", d.getElementById("rpRing").querySelectorAll("svg circle").length === 2);
+  check("locked: heatmap rendered", d.getElementById("rpHm").querySelectorAll(".hm-cell").length === 6);
+
+  // The paid tier: gone from the document, not merely hidden.
+  check("locked: body is not in the DOM", !bodyPresent(d));
+  check("locked: no sections in the DOM", d.querySelectorAll(".rp-sec").length === 0,
+    d.querySelectorAll(".rp-sec").length);
+  /*
+   * Check the report container, not document.body: buildHtml() inlines every
+   * script into the body, so body.textContent includes report.js's own source —
+   * which of course contains this text.
+   */
+  const visible = d.getElementById("rpDoc").textContent;
+  check("locked: no paid text in the report",
+    !visible.includes("Externalise everything") && !visible.includes("Capture everything"),
+    visible.slice(0, 120));
+  check("locked: the appendix table is gone", !d.getElementById("rpTable"));
+
+  check("locked: paywall shown", paywallShown(d));
+  check("locked: paywall lists all seven sections",
+    d.getElementById("rpLock").querySelectorAll(".lk-list li").length === 7,
+    d.getElementById("rpLock").querySelectorAll(".lk-list li").length);
+  check("locked: paywall offers the purchase",
+    d.getElementById("rpLock").textContent.includes("$19"));
 }
 
-/* 2 — AI generation replaces the narrative sections */
+/* 2 — the ?unlocked=1 demo flag must not work in production config */
 {
-  const { dom, calls } = makeDom({ apiEndpoint: "https://worker.test/", fetchImpl: okResponse });
+  const { dom } = makeDom({
+    apiEndpoint: "",
+    answers: ANSWERS,
+    url: "https://example.com/report.html?unlocked=1",
+    fetchImpl: async () => { throw new Error("nope"); }
+  });
+  await tick(200);
+  check("demo flag off: ?unlocked=1 does not unlock",
+    !bodyPresent(dom.window.document));
+}
+
+/* 3 — the sample previews stay fully open, for the sales pages */
+{
+  const { dom } = makeDom({
+    apiEndpoint: "",
+    url: "https://example.com/report.html?sample=inattentive",
+    fetchImpl: async () => { throw new Error("nope"); }
+  });
+  await tick(200);
+  const d = dom.window.document;
+  check("preview: body present", bodyPresent(d));
+  check("preview: no paywall", !paywallShown(d));
+  check("preview: sections rendered", d.querySelectorAll(".rp-sec").length === 7,
+    d.querySelectorAll(".rp-sec").length);
+}
+
+/* 4 — a paid order unlocks the report and gets the AI narrative */
+{
+  const { dom, calls } = makeDom({
+    apiEndpoint: "https://worker.test/",
+    answers: ANSWERS,
+    storedRef: "ref_from_checkout_123",
+    fetchImpl: okResponse
+  });
   await tick(200);
   const d = dom.window.document;
 
   check("worker called once", calls.length === 1, calls.length);
   check("  posts 18 answers", Object.keys(calls[0].body.answers).length === 18);
-  check("  sends demo token", calls[0].body.access === "demo", calls[0].body.access);
+  check("  sends the stored checkout reference", calls[0].body.access === "ref_from_checkout_123",
+    calls[0] && calls[0].body.access);
+
+  check("unlocked: body is back in the DOM", bodyPresent(d));
+  check("unlocked: paywall gone", !paywallShown(d));
+  check("unlocked: seven sections", d.querySelectorAll(".rp-sec").length === 7,
+    d.querySelectorAll(".rp-sec").length);
 
   const ov = d.getElementById("rpOverview").innerHTML;
   check("AI overview injected", ov.includes("AI_OVERVIEW_ONE") && ov.includes("AI_OVERVIEW_TWO"));
@@ -114,77 +200,91 @@ const okResponse = () => new Response(JSON.stringify({
   check("success banner shown",
     d.getElementById("aiBanner").textContent.includes("written for your specific answers"));
   check("static sections untouched", d.getElementById("rpPlan").innerHTML.includes("Capture everything"));
+  check("unlocked: appendix back", (d.getElementById("rpTable").innerHTML.match(/<tr>/g) || []).length === 19);
 }
 
-/* 3 — upstream failure falls back to the template */
+/* 5 — a paid order whose personalisation failed still gets the report */
 {
   const { dom } = makeDom({
     apiEndpoint: "https://worker.test/",
+    answers: ANSWERS,
+    storedRef: "ref_paid_502",
     fetchImpl: async () => new Response(JSON.stringify({ error: "upstream_error" }),
       { status: 502, headers: { "Content-Type": "application/json" } })
   });
   await tick(200);
   const d = dom.window.document;
-  check("on 502: template overview kept", !d.getElementById("rpOverview").innerHTML.includes("AI_OVERVIEW"));
-  check("on 502: template areas kept", d.getElementById("rpAreas").innerHTML.includes("Work and career"));
-  check("on 502: fallback banner shown", d.getElementById("aiBanner").textContent.includes("standard version"),
+  check("on 502: unlocked — the customer paid", bodyPresent(d));
+  check("on 502: template areas present", d.getElementById("rpAreas").innerHTML.includes("Work and career"));
+  check("on 502: no AI content", !d.getElementById("rpOverview").innerHTML.includes("AI_OVERVIEW"));
+  check("on 502: busy banner shown", d.getElementById("aiBanner").textContent.includes("busy"),
     d.getElementById("aiBanner").textContent.slice(0, 80));
 }
 
-/* 4 — access denied */
+/* 6 — an order that cannot be matched stays locked */
 {
   const { dom } = makeDom({
     apiEndpoint: "https://worker.test/",
+    answers: ANSWERS,
+    storedRef: "ref_not_found",
     fetchImpl: async () => new Response(JSON.stringify({ error: "access_denied" }),
       { status: 403, headers: { "Content-Type": "application/json" } })
   });
   await tick(200);
-  check("on 403: template kept", dom.window.document.getElementById("rpAreas").innerHTML.includes("Work and career"));
-  check("on 403: link-expired message",
-    dom.window.document.getElementById("aiBanner").textContent.includes("isn't valid"));
+  const d = dom.window.document;
+  check("on 403: still locked", !bodyPresent(d));
+  check("on 403: paywall explains the missing order",
+    d.getElementById("rpLock").textContent.includes("couldn't find that order"),
+    d.getElementById("rpLock").textContent.slice(0, 90));
 }
 
-/* 5 — network failure */
+/* 7 — a dropped connection must not become a way past the paywall */
 {
   const { dom } = makeDom({
     apiEndpoint: "https://worker.test/",
+    answers: ANSWERS,
+    storedRef: "ref_offline",
     fetchImpl: async () => { throw new Error("network down"); }
   });
   await tick(200);
-  check("on network error: fallback banner",
-    dom.window.document.getElementById("aiBanner").textContent.includes("Couldn't reach"));
-  check("on network error: template intact",
-    dom.window.document.getElementById("rpStrategies").innerHTML.includes("Externalise everything"));
+  const d = dom.window.document;
+  check("on network error: still locked", !bodyPresent(d));
+  check("on network error: banner tells them to reload",
+    d.getElementById("aiBanner").textContent.includes("Couldn't reach"));
 }
 
-/* 6 — not unlocked: no call at all */
+/* 8 — no Worker configured: locked, with a reason rather than a silent blank */
 {
   const { dom, calls } = makeDom({
-    apiEndpoint: "https://worker.test/",
-    url: "https://example.com/report.html?sample=inattentive",
+    apiEndpoint: "",
+    answers: ANSWERS,
+    storedRef: "ref_no_worker",
     fetchImpl: async () => { throw new Error("should not be called"); }
   });
   await tick(200);
-  check("not unlocked: no network call", calls.length === 0, calls.length);
-  check("not unlocked: template renders",
-    dom.window.document.getElementById("rpAreas").innerHTML.includes("Work and career"));
+  const d = dom.window.document;
+  check("no endpoint: no network call", calls.length === 0, calls.length);
+  check("no endpoint: locked", !bodyPresent(d));
+  check("no endpoint: paywall says it is unavailable",
+    d.getElementById("rpLock").textContent.includes("isn't available yet"),
+    d.getElementById("rpLock").textContent.slice(0, 90));
 }
 
-/* 7 — the reference stored before checkout is used as the token */
+/* 9 — a request rejected before the access check must not unlock */
 {
-  const { calls } = makeDom({
+  const { dom } = makeDom({
     apiEndpoint: "https://worker.test/",
-    url: "https://example.com/report.html?sample=inattentive",
-    storedRef: "ref_from_checkout_123",
-    fetchImpl: okResponse
+    answers: ANSWERS,
+    storedRef: "ref_bad_request",
+    fetchImpl: async () => new Response(JSON.stringify({ error: "invalid_json" }),
+      { status: 400, headers: { "Content-Type": "application/json" } })
   });
   await tick(200);
-  check("stored checkout ref used as access token",
-    calls.length === 1 && calls[0].body.access === "ref_from_checkout_123",
-    calls[0] && calls[0].body.access);
+  check("on 400: still locked (never reached the access check)",
+    !bodyPresent(dom.window.document));
 }
 
-/* 8 — each sample profile renders a distinct cover */
+/* 10 — each sample profile renders a distinct cover */
 for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
   const { dom } = makeDom({
     apiEndpoint: "",
@@ -199,7 +299,7 @@ for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
     d.getElementById("rpProfile").textContent);
 }
 
-/* 9 — the visual summary is driven by the real answers */
+/* 11 — the visual summary is driven by the real answers */
 {
   const { dom } = makeDom({
     apiEndpoint: "",
@@ -246,7 +346,7 @@ for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
     d.getElementById("rpHmLegend").querySelectorAll(".lg").length === 5);
 }
 
-/* 10 — a sub-threshold sample must not be drawn as flagged */
+/* 12 — a sub-threshold sample must not be drawn as flagged */
 {
   const { dom } = makeDom({
     apiEndpoint: "",
@@ -265,7 +365,7 @@ for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
     d.getElementById("rpDims").querySelector(".viz-gap").innerHTML.includes("close together"));
 }
 
-/* 11 — every section gets an icon */
+/* 13 — every section gets an icon */
 {
   const { dom } = makeDom({
     apiEndpoint: "",
@@ -281,7 +381,7 @@ for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
     Array.from(heads).map(h => h.textContent.trim().slice(0, 4)).join("|"));
 }
 
-/* 12 — the share block is built and stays privacy-safe */
+/* 14 — the share block is built and stays privacy-safe */
 {
   const { dom } = makeDom({
     apiEndpoint: "",
@@ -313,7 +413,7 @@ for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
   check("share: site url derived from the page", S.siteUrl() === "https://example.com", S.siteUrl());
 }
 
-/* 13 — no report, no share block */
+/* 15 — no report, no share block */
 {
   const { dom } = makeDom({
     apiEndpoint: "",

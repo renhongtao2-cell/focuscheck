@@ -217,6 +217,32 @@ async function run() {
   log("report.html: no share card built without a report",
     await evaluate("!document.getElementById('shCanvas')"));
 
+  /*
+   * The paywall. A visitor who has taken the assessment but not paid must not
+   * receive the written report — this is the regression guard for the bug where
+   * report.html rendered all seven sections for anyone who opened it.
+   */
+  await evaluate(`localStorage.setItem('focuscheck.answers.v1', JSON.stringify({
+    1:3,2:3,3:3,4:3,5:2,6:2,7:3,8:3,9:3,10:3,11:3,12:2,13:2,14:2,15:2,16:2,17:2,18:2
+  }))`);
+  await goto(BASE + "/report.html");
+  await sleep(700);
+  const gated = await evaluate(`(() => ({
+    body: !!document.querySelector('.rp-body'),
+    sections: document.querySelectorAll('.rp-sec').length,
+    paywall: (function () {
+      var l = document.getElementById('rpLock');
+      return l && !l.classList.contains('hidden') ? l.textContent : '';
+    })(),
+    ring: document.querySelectorAll('#rpRing svg circle').length
+  }))()`);
+  log("report.html: unpaid visitor does not get the written report", gated.body === false, gated.body);
+  log("report.html: unpaid visitor sees no sections", gated.sections === 0, gated.sections);
+  log("report.html: unpaid visitor sees the paywall", gated.paywall.indexOf('$19') > -1,
+    gated.paywall.slice(0, 60));
+  log("report.html: the free summary is still shown", gated.ring === 2, gated.ring);
+  await evaluate("localStorage.clear()");
+
   await goto(BASE + "/report.html?sample=combined");
   await sleep(1200);
   const rep = await evaluate(`(() => ({

@@ -17,7 +17,7 @@ single Cloudflare Worker that holds the LLM key and verifies payments.
 | `index.html` | Landing page — hero, how it works, free vs paid comparison, FAQ |
 | `test.html` | 18-question assessment with progress bar and auto-advance |
 | `results.html` | Scored result + blurred report preview + `$19` paywall |
-| `report.html` | **The paid deliverable** — a 7-section personalised report |
+| `report.html` | **The paid deliverable** — free cover and visual summary, sections 01–07 behind the paywall |
 | `adult-adhd-symptoms.html` | Content page — all 18 ASRS statements, explained |
 | `adhd-inattentive-type.html` | Content page — the inattentive presentation |
 | `adhd-hyperactive-impulsive-type.html` | Content page — the hyperactive-impulsive presentation |
@@ -73,17 +73,58 @@ python -m http.server 8000     # or: npm run serve
 
 ## How the report works
 
-The report is generated in **two layers**:
+The report is split into a free teaser and a paid body.
 
-1. **Template** (`report.js`) — renders instantly from the user's answers, using a
-   content library for four symptom profiles. This always works, even with no backend.
-2. **AI upgrade** (`report-ai.js`) — if the visitor has unlocked the report and a
-   Worker is configured, it asks the Worker for an AI-written version and swaps in the
-   narrative sections.
+**Free** — the cover (profile name, tagline, report ID) and the visual summary: the
+score ring, the two cluster bars, and the 18-cell heatmap. These are derived from the
+visitor's own answers and need no backend.
 
-If generation fails for any reason — network, timeout, quota, bad access — **the
-template report stays on screen** and a short note explains why. The page never ends up
-empty.
+**Paid** — sections 01–07: the interpretation, the profile detail, where symptoms show
+up, what helps, talking to a clinician, the 30-day plan, and the appendix of responses.
+
+The paid body is generated in **two layers**:
+
+1. **Template** (`report.js`) — a content library for four symptom profiles. This is the
+   fallback when the AI is unavailable.
+2. **AI upgrade** (`report-ai.js`) — asks the Worker for a version written for the
+   visitor's specific answers and swaps in the narrative sections.
+
+### The gate
+
+`report.js` renders the whole report, then **removes `.rp-body` from the DOM** unless the
+visitor is entitled to it. Removing it rather than blurring it is deliberate: a blur is
+undone in dev tools, and text that is present can be copied or printed.
+
+Unlock happens in one of three ways:
+
+| Condition | Result |
+|---|---|
+| `?sample=…` | Unlocked — the sales-page previews |
+| `ALLOW_DEMO_UNLOCK: true` **and** `?unlocked=1` | Unlocked — local development only |
+| A paid order reference the Worker confirms | Unlocked |
+
+`report-ai.js` sends the stored order reference to the Worker. **403 means locked;
+anything else means unlocked.** The distinction matters: a 500 or 502 is returned only
+after the access check has already passed, so it means the customer paid and the
+generation failed — they still get the report. A request that gets no response at all
+stays locked, so a dropped connection is not a way in.
+
+The default is **locked**. If anything downstream fails, the failure mode is a locked
+report, not a free one.
+
+> `ALLOW_DEMO_UNLOCK` must be `false` in production. Leaving it on means anyone who
+> guesses `report.html?unlocked=1` gets the paid report for free.
+
+### Known limit of a client-side gate
+
+The template copy lives in `assets/report.js`, which is a public file. Someone willing to
+read it can recover the generic per-profile text. What they cannot get is their own
+personalised result, and the AI narrative is never sent to an unpaid browser.
+
+Closing that gap properly means moving the content library to the Worker so the paid text
+is never shipped to the client at all. The structure is already there — the Worker has the
+answers and does the scoring — but it makes the Worker mandatory for any report to render,
+so it is worth doing only once the Worker is deployed.
 
 Preview the report without taking the test:
 
@@ -264,22 +305,23 @@ npm test
 - `test/worker.mjs` — 24 tests covering validation, CORS, every upstream failure mode,
   provider adapters, access control and the health endpoint. The LLM is mocked, so no
   API key or network access is needed.
-- `test/integration.mjs` — 71 tests that load `report.html` in jsdom with the real
-  scripts, mock the Worker, and verify that AI content is injected correctly, that the
-  visual summary matches the answers, that the share card stays privacy-safe, and that
-  every failure path still leaves a usable report on screen.
+- `test/integration.mjs` — 84 tests that load `report.html` in jsdom with the real
+  scripts, mock the Worker, and verify the gate: that an unpaid visitor's page contains
+  no report sections at all, that a paid reference unlocks them, that a 403 re-locks, and
+  that a dropped connection does *not* unlock. Plus the visual summary, the share card's
+  privacy boundary, and every failure path.
 - `test/pages.mjs` — 109 static checks across the public pages: title and description
   lengths, canonical/OG/Twitter metadata, OG image dimensions (read straight from the PNG
   header), no broken internal links, sibling-article cross-linking, and sitemap/robots
   consistency.
-- `test/payment.mjs` — 54 tests that boot the payment sandbox and drive the paid chain over
+- `test/payment.mjs` — 55 tests that boot the payment sandbox and drive the paid chain over
   HTTP: a signed webhook records the order, generation is refused without one, every
   provider's signature format is accepted and a tampered body is rejected. It also
   re-derives the pattern from the same answers on both sides — client and server each keep
   their own copy of the thresholds, so a drift there would make the AI narrative contradict
   the template report.
 
-Total: **315 tests**, none of which need network access, an API key, or a payment account.
+Total: **329 tests**, none of which need network access, an API key, or a payment account.
 
 ### Checking the deployed site
 
@@ -306,9 +348,10 @@ standard location.
 npm run check:pay
 ```
 
-Same idea, but for the money path: it boots the sandbox, answers all 18 questions, unlocks,
-pays through the sandbox checkout, and asserts the AI narrative actually replaced the
-template sections — 24 checks, exiting non-zero on failure.
+Same idea, but for the money path: it boots the sandbox, answers all 18 questions, checks
+the report is locked and that the paid sections are absent from the DOM, unlocks, pays
+through the sandbox checkout, and asserts the AI narrative actually replaced the template
+sections — 33 checks, exiting non-zero on failure.
 
 ---
 

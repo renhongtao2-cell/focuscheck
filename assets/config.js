@@ -24,10 +24,14 @@ window.FOCUSCHECK_CONFIG = {
   TIMEOUT_MS: 45000,
 
   /*
-   * While true, report.html?unlocked=1 grants access for testing.
-   * Set to false in production.
+   * Local preview escape hatch. While true, report.html?unlocked=1 shows the
+   * full report without a payment.
+   *
+   * Must be false in production — leaving it on means anyone who guesses the
+   * query string gets the paid report for free. Set it to true only in a local
+   * working copy you are not publishing.
    */
-  ALLOW_DEMO_UNLOCK: true,
+  ALLOW_DEMO_UNLOCK: false,
 
   /* ---------------------------------------------------------------- *
    * Payment
@@ -48,11 +52,15 @@ window.FOCUSCHECK_CONFIG = {
    * The query parameter your provider uses for custom data, so the order can be
    * matched to this browser after payment.
    *
+   *   Stripe        -> client_reference_id   (currently selected)
    *   Lemon Squeezy -> checkout[custom][ref]
    *   Paddle        -> (uses _passthrough; see worker/README.md)
-   *   Stripe        -> client_reference_id
+   *
+   * This must match the parameter name configured in your provider's dashboard.
+   * If the two differ the customer is charged, the webhook arrives with no order
+   * reference, and the report never unlocks.
    */
-  CHECKOUT_REF_PARAM: "checkout[custom][ref]",
+  CHECKOUT_REF_PARAM: "client_reference_id",
 
   /* Where the provider should send the customer after a successful payment. */
   RETURN_URL: "report.html",

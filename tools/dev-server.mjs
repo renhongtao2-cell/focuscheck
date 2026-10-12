@@ -33,7 +33,27 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT || 8788);
 const OPEN_ACCESS = process.argv.includes("--open-access");
 const SECRET = "dev_webhook_secret_do_not_use_in_production";
-const PROVIDER = process.env.PAYMENT_PROVIDER || "lemon_squeezy";
+/*
+ * Which provider's signature format to emulate. Read from wrangler.toml so the
+ * sandbox verifies against the same scheme the deployed Worker will use —
+ * signature formats differ per provider, so a wrong default here would let a
+ * broken webhook pass locally and fail in production.
+ */
+function readWranglerValue(key, fallback) {
+  const src = fs.readFileSync(path.join(ROOT, "worker", "wrangler.toml"), "utf8");
+  const m = src.match(new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]*)\"", "m"));
+  return m ? m[1] : fallback;
+}
+
+const PAYMENT_PROVIDER = process.env.PAYMENT_PROVIDER || readWranglerValue("PAYMENT_PROVIDER", "lemon_squeezy");
+
+/*
+ * The LLM provider is a separate axis from the payment provider — they happen
+ * to be configured next to each other, but "stripe" and "anthropic" have
+ * nothing to do with one another. Keeping one variable for both is how the
+ * mock upstream ends up shaped for the wrong vendor.
+ */
+const LLM_PROVIDER = process.env.LLM_PROVIDER || readWranglerValue("PROVIDER", "openrouter");
 
 const ORIGIN = `http://localhost:${PORT}`;
 const WORKER_URL = ORIGIN + "/worker";
@@ -49,12 +69,22 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ||
 /*
  * The parameter the checkout link carries the order reference in.
  *
- * This has to match assets/config.js exactly. A mismatch is the single most
+ * It has to match assets/config.js exactly. A mismatch is the single most
  * likely way to ship a broken payment flow: the customer pays, the webhook
- * arrives with no reference, and the report never unlocks. Keeping it in one
- * place here, and splicing it into the served config, makes that impossible.
+ * arrives with no reference, and the report never unlocks.
+ *
+ * So don't restate the value here — read it out of the real config. The
+ * sandbox is then guaranteed to exercise whatever the site actually ships,
+ * and the two can never drift apart. CHECKOUT_REF_PARAM in the environment
+ * still wins, which is only useful for deliberately reproducing a mismatch.
  */
-const REF_PARAM = process.env.CHECKOUT_REF_PARAM || "checkout[custom][ref]";
+function readConfigRefParam() {
+  const src = fs.readFileSync(path.join(ROOT, "assets", "config.js"), "utf8");
+  const m = src.match(/CHECKOUT_REF_PARAM:\s*"([^"]*)"/);
+  if (!m) throw new Error("CHECKOUT_REF_PARAM not found in assets/config.js");
+  return m[1];
+}
+const REF_PARAM = process.env.CHECKOUT_REF_PARAM || readConfigRefParam();
 
 /* ---------------- in-memory KV, matching the Workers KV surface ---------------- */
 
@@ -98,7 +128,7 @@ function mockLlm(url, init) {
     }))
   };
 
-  const body = PROVIDER === "anthropic"
+  const body = LLM_PROVIDER === "anthropic"
     ? { content: [{ text: JSON.stringify(report) }] }
     : { choices: [{ message: { content: JSON.stringify(report) } }] };
 
@@ -111,11 +141,11 @@ function mockLlm(url, init) {
 
 const env = {
   LLM_API_KEY: "mock-key-not-used",
-  PROVIDER: PROVIDER === "anthropic" ? "anthropic" : "openrouter",
+  PROVIDER: LLM_PROVIDER,
   LLM_MODEL: "mock-model",
   ALLOWED_ORIGINS: ALLOWED_ORIGINS,
   APP_URL: ORIGIN,
-  PAYMENT_PROVIDER: PROVIDER,
+  PAYMENT_PROVIDER: PAYMENT_PROVIDER,
   PAYMENT_WEBHOOK_SECRET: SECRET,
   REQUIRE_ACCESS: OPEN_ACCESS ? "false" : "true",
   ORDERS
@@ -218,13 +248,13 @@ function readRef(url) {
 }
 
 function buildWebhookBody(ref) {
-  if (PROVIDER === "paddle") {
+  if (PAYMENT_PROVIDER === "paddle") {
     return {
       event_type: "transaction.completed",
       data: { status: "completed", custom_data: { ref } }
     };
   }
-  if (PROVIDER === "stripe") {
+  if (PAYMENT_PROVIDER === "stripe") {
     return {
       type: "checkout.session.completed",
       data: { object: { payment_status: "paid", client_reference_id: ref } }
@@ -237,15 +267,28 @@ function buildWebhookBody(ref) {
 }
 
 async function signWebhook(rawBody) {
+  const ts = Math.floor(Date.now() / 1000);
+
+  /*
+   * Each provider signs a different string, not just a different header:
+   * Stripe signs "t.body", Paddle signs "ts:body", Lemon Squeezy signs the raw
+   * body. Signing the raw body and merely relabelling the header produces a
+   * signature that looks right and always fails — mirror worker/payments.js
+   * exactly rather than approximating it.
+   */
+  let signedPayload = rawBody;
+  if (PAYMENT_PROVIDER === "paddle") signedPayload = ts + ":" + rawBody;
+  if (PAYMENT_PROVIDER === "stripe") signedPayload = ts + "." + rawBody;
+
   const key = await crypto.subtle.importKey(
     "raw", new TextEncoder().encode(SECRET),
     { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
   );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedPayload));
   const hex = [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, "0")).join("");
-  const ts = Math.floor(Date.now() / 1000);
-  if (PROVIDER === "paddle") return { name: "Paddle-Signature", value: `ts=${ts};h1=${hex}` };
-  if (PROVIDER === "stripe") return { name: "Stripe-Signature", value: `t=${ts},v1=${hex}` };
+
+  if (PAYMENT_PROVIDER === "paddle") return { name: "Paddle-Signature", value: `ts=${ts};h1=${hex}` };
+  if (PAYMENT_PROVIDER === "stripe") return { name: "Stripe-Signature", value: `t=${ts},v1=${hex}` };
   return { name: "X-Signature", value: hex };
 }
 
@@ -333,7 +376,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" })
         .end(JSON.stringify({
           requireAccess: env.REQUIRE_ACCESS,
-          provider: PROVIDER,
+          provider: PAYMENT_PROVIDER,
           llmCalls,
           orders: keys.map(k => ({ key: k, value: JSON.parse(store.get(k)) }))
         }, null, 2));
@@ -383,7 +426,7 @@ server.listen(PORT, () => {
   console.log("\n  FocusCheck sandbox");
   console.log("  site      " + ORIGIN + "/");
   console.log("  worker    " + WORKER_URL);
-  console.log("  provider  " + PROVIDER + "   access required: " + (env.REQUIRE_ACCESS === "true"));
+  console.log("  payment   " + PAYMENT_PROVIDER + "   access required: " + (env.REQUIRE_ACCESS === "true"));
   console.log("  LLM       mocked (no key needed)\n");
 });
 

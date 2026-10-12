@@ -9,6 +9,7 @@
   --brand:#0E7C5A;
   --brand-dark:#0A5C43;
   --brand-soft:#E8F5F0;
+  --tealline:#C6E3D8;
   --amber:#B45309;
   --amber-soft:#FEF3E2;
   --danger:#B42318;
@@ -400,6 +401,51 @@ h3{font-size:18px;font-weight:700;letter-spacing:-.01em}
   .viz-heat-grid{gap:6px}
   .sh-grid{grid-template-columns:1fr;gap:24px}
   .sh-preview{max-width:300px;margin:0 auto}
+}
+
+/* ---------- report paywall ----------
+   Shown in place of .rp-body while the report is locked. The body itself is
+   removed from the DOM by report.js, so there is nothing here to blur. */
+#rpLock{padding:0}
+.rp-lockcard{
+  max-width:840px;margin:0 auto;background:#fff;border:1px solid var(--line);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:38px 46px 34px;
+}
+.lk-badge{
+  display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;
+  letter-spacing:.04em;text-transform:uppercase;color:var(--brand-dark);
+  background:var(--brand-soft);border:1px solid var(--tealline);border-radius:999px;
+  padding:5px 13px 5px 11px;margin-bottom:18px;
+}
+.lk-badge svg{width:14px;height:14px}
+.rp-lockcard h2{font-size:25px;line-height:1.25;letter-spacing:-.02em;margin-bottom:12px}
+.lk-lead{color:var(--ink-2);font-size:15.5px;max-width:60ch}
+.lk-list{
+  list-style:none;margin:24px 0 28px;border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+}
+.lk-list li{
+  display:flex;gap:14px;align-items:flex-start;padding:11px 0;
+  border-bottom:1px solid var(--line);font-size:14.5px;color:var(--ink-2);
+}
+.lk-list li:last-child{border-bottom:none}
+.lk-list .n{
+  flex:0 0 auto;font-weight:700;font-size:12.5px;color:var(--ink-3);
+  font-variant-numeric:tabular-nums;padding-top:2px;
+}
+.lk-list b{color:var(--ink)}
+.lk-note{margin-top:16px;font-size:13.5px;color:var(--ink-3)}
+.rp-lockcard .btn-lg{margin-top:4px}
+
+@media (max-width:720px){
+  .rp-lockcard{padding:28px 22px 26px}
+  .rp-lockcard h2{font-size:21px}
+  .rp-lockcard .btn-lg{width:100%;padding:15px 20px;font-size:16px}
+}
+
+@media print{
+  /* The paywall prints when it is showing (it is .hidden once unlocked). */
+  .rp-lockcard{box-shadow:none;border:none;padding:0}
 }
 @media print{
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}

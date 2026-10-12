@@ -201,12 +201,22 @@ async function run() {
   await sleep(500);
   const locked = await evaluate(`(() => ({
     doc: !document.getElementById('rpDoc').classList.contains('hidden'),
-    overview: document.getElementById('rpOverview').innerHTML,
-    ai: document.getElementById('rpOverview').innerHTML.includes('MOCK_OVERVIEW'),
-    banner: document.getElementById('aiBanner').textContent.trim(),
+    body: !!document.querySelector('.rp-body'),
+    sections: document.querySelectorAll('.rp-sec').length,
+    paywall: (function () {
+      var l = document.getElementById('rpLock');
+      return l && !l.classList.contains('hidden') ? l.textContent : '';
+    })(),
+    ring: document.getElementById('rpRing').querySelectorAll('svg circle').length,
+    ai: document.body.innerHTML.includes('MOCK_OVERVIEW'),
     ref: localStorage.getItem('focuscheck.ref')
   }))()`);
-  log("locked: the template report still renders", locked.doc === true, locked.doc);
+  log("locked: the report shell is visible", locked.doc === true, locked.doc);
+  log("locked: the visual summary is the free teaser", locked.ring === 2, locked.ring);
+  log("locked: the paid body is not in the DOM", locked.body === false, locked.body);
+  log("locked: no report sections rendered", locked.sections === 0, locked.sections);
+  log("locked: the paywall is shown with a price", locked.paywall.indexOf('$19') > -1,
+    locked.paywall.slice(0, 70));
   log("locked: no AI content before payment", locked.ai === false, locked.ai);
   log("locked: no order reference stored yet", locked.ref === null, locked.ref);
 
@@ -249,9 +259,16 @@ async function run() {
     banner: document.getElementById('aiBanner').textContent.trim(),
     profile: document.getElementById('rpProfile').textContent,
     ring: document.querySelectorAll('#rpRing svg circle').length,
+    sections: document.querySelectorAll('.rp-sec').length,
+    paywall: (function () {
+      var l = document.getElementById('rpLock');
+      return !!l && !l.classList.contains('hidden');
+    })(),
     share: document.getElementById('shCanvas') ? document.getElementById('shCanvas').width : 0
   }))()`);
 
+  log("unlocked: the paid body is back in the DOM", after.sections === 7, after.sections);
+  log("unlocked: the paywall is gone", after.paywall === false, after.paywall);
   log("unlocked: the AI narrative replaced the template", unlocked === true, after.overview.slice(0, 80));
   log("unlocked: the overview has both paragraphs",
     after.overview.includes("MOCK_OVERVIEW_PARAGRAPH_ONE") &&
@@ -272,14 +289,30 @@ async function run() {
     st.orders.map(o => o.key).join(","));
   log("server: the LLM was called once", st.llmCalls === 1, st.llmCalls);
 
-  /* ---- 7. a fresh visitor without a reference gets nothing ---- */
-  await evaluate("localStorage.clear()");
+  /* ---- 7. the same answers, but no order reference: locked again ---- */
+  await evaluate("localStorage.removeItem('focuscheck.ref')");
   await goto(BASE + "/report.html");
   await sleep(600);
-  log("gated: clearing the reference hides the report",
+  const regated = await evaluate(`(() => ({
+    doc: !document.getElementById('rpDoc').classList.contains('hidden'),
+    body: !!document.querySelector('.rp-body'),
+    paywall: (function () {
+      var l = document.getElementById('rpLock');
+      return l && !l.classList.contains('hidden') ? l.textContent : '';
+    })()
+  }))()`);
+  log("re-locked: the report shell is still visible", regated.doc === true, regated.doc);
+  log("re-locked: the paid body is gone again", regated.body === false, regated.body);
+  log("re-locked: the paywall is back", regated.paywall.indexOf('$19') > -1, regated.paywall.slice(0, 60));
+
+  /* ---- 8. no answers at all: the empty state, not a paywall ---- */
+  await evaluate("localStorage.clear()");
+  await goto(BASE + "/report.html");
+  await sleep(500);
+  log("empty: no answers means no report",
     await evaluate("!document.getElementById('rpDoc').classList.contains('hidden')") === false);
 
-  /* ---- 8. cleanliness ---- */
+  /* ---- 9. cleanliness ---- */
   log("no uncaught page errors", pageErrors.length === 0, pageErrors.slice(0, 3));
   log("no console errors", consoleErrors.length === 0, consoleErrors.slice(0, 3));
 

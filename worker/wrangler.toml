@@ -16,7 +16,9 @@ ALLOWED_ORIGINS = "https://renhongtao2-cell.github.io,http://localhost:8000"
 APP_URL = "https://renhongtao2-cell.github.io/focuscheck/"
 
 # Which payment provider sends webhooks here: lemon_squeezy | paddle | stripe
-PAYMENT_PROVIDER = "lemon_squeezy"
+# Keep this in step with CHECKOUT_REF_PARAM in assets/config.js — the two
+# describe the same integration and a mismatch breaks unlocking silently.
+PAYMENT_PROVIDER = "stripe"
 
 # Leave "false" while you are still setting payment up — generation is then open.
 # Set to "true" once webhooks are live, so only paid orders can generate a report.

@@ -87,10 +87,87 @@ async function sign(body) {
   return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-const webhookBody = (ref, status) => JSON.stringify({
-  meta: { event_name: "order_created", custom_data: { ref } },
-  data: { attributes: { status } }
-});
+/*
+ * The sandbox emulates whichever provider wrangler.toml names, so the test has
+ * to sign the way that provider signs. Deriving the scheme from the same file
+ * the Worker reads keeps the two in step: a test that hard-coded one provider's
+ * header would keep passing happily while a different provider's format was
+ * broken — which is exactly the kind of bug this suite exists to catch.
+ */
+function readProvider() {
+  const src = fs.readFileSync(path.join(ROOT, "worker", "wrangler.toml"), "utf8");
+  const m = src.match(/^\s*PAYMENT_PROVIDER\s*=\s*"([^"]*)"/m);
+  if (!m) throw new Error("PAYMENT_PROVIDER not found in worker/wrangler.toml");
+  return m[1];
+}
+const PROVIDER = readProvider();
+
+/* Fixed timestamps: the Worker only checks the HMAC, not freshness. */
+const TS = "1750000000";
+
+const ADAPTERS = {
+  lemon_squeezy: {
+    paid: ref => JSON.stringify({
+      meta: { event_name: "order_created", custom_data: { ref } },
+      data: { attributes: { status: "paid" } }
+    }),
+    unpaid: ref => JSON.stringify({
+      meta: { event_name: "order_created", custom_data: { ref } },
+      data: { attributes: { status: "pending" } }
+    }),
+    otherEvent: () => JSON.stringify({ meta: { event_name: "subscription_cancelled" }, data: {} }),
+    noRef: () => JSON.stringify({
+      meta: { event_name: "order_created", custom_data: {} },
+      data: { attributes: { status: "paid" } }
+    }),
+    headers: async body => ({ "X-Signature": await sign(body) }),
+    wrong: () => ({ "X-Signature": "0".repeat(64) }),
+    truncated: async body => ({ "X-Signature": (await sign(body)).slice(0, 32) })
+  },
+
+  paddle: {
+    paid: ref => JSON.stringify({
+      event_type: "transaction.completed",
+      data: { status: "completed", custom_data: { ref } }
+    }),
+    unpaid: ref => JSON.stringify({
+      event_type: "transaction.completed",
+      data: { status: "past_due", custom_data: { ref } }
+    }),
+    otherEvent: () => JSON.stringify({ event_type: "subscription.canceled", data: {} }),
+    noRef: () => JSON.stringify({
+      event_type: "transaction.completed",
+      data: { status: "completed", custom_data: {} }
+    }),
+    headers: async body => ({ "Paddle-Signature": `ts=${TS};h1=${await sign(TS + ":" + body)}` }),
+    wrong: () => ({ "Paddle-Signature": `ts=${TS};h1=${"0".repeat(64)}` }),
+    truncated: async body =>
+      ({ "Paddle-Signature": `ts=${TS};h1=${(await sign(TS + ":" + body)).slice(0, 32)}` })
+  },
+
+  stripe: {
+    paid: ref => JSON.stringify({
+      type: "checkout.session.completed",
+      data: { object: { payment_status: "paid", client_reference_id: ref } }
+    }),
+    unpaid: ref => JSON.stringify({
+      type: "checkout.session.completed",
+      data: { object: { payment_status: "unpaid", client_reference_id: ref } }
+    }),
+    otherEvent: () => JSON.stringify({ type: "customer.created", data: { object: {} } }),
+    noRef: () => JSON.stringify({
+      type: "checkout.session.completed",
+      data: { object: { payment_status: "paid" } }
+    }),
+    headers: async body => ({ "Stripe-Signature": `t=${TS},v1=${await sign(TS + "." + body)}` }),
+    wrong: () => ({ "Stripe-Signature": `t=${TS},v1=${"0".repeat(64)}` }),
+    truncated: async body =>
+      ({ "Stripe-Signature": `t=${TS},v1=${(await sign(TS + "." + body)).slice(0, 32)}` })
+  }
+};
+
+const P = ADAPTERS[PROVIDER];
+if (!P) throw new Error(`no test adapter for PAYMENT_PROVIDER="${PROVIDER}"`);
 
 const state = () => fetch(BASE + "/__pay/state").then(r => r.json());
 
@@ -124,24 +201,23 @@ await fetch(BASE + "/__pay/reset");
 /* ---------- 2 — webhook signature verification ---------- */
 
 {
-  const body = webhookBody("attacker0000000000000000000000000", "paid");
+  check("webhook: the sandbox is emulating " + PROVIDER, !!P);
 
-  let r = await post(WORKER + "/webhook", body, {
-    "X-Signature": "0".repeat(64)
-  });
+  const body = P.paid("attacker0000000000000000000000000");
+
+  let r = await post(WORKER + "/webhook", body, P.wrong());
   check("webhook: a wrong signature is rejected", r.status === 401, r.status);
 
   r = await post(WORKER + "/webhook", body);
   check("webhook: a missing signature is rejected", r.status === 401, r.status);
 
   // Correct signature, but over different content — the classic tamper attempt.
-  const sigForOther = await sign(webhookBody("someoneelse000000000000000000000", "paid"));
-  r = await post(WORKER + "/webhook", body, { "X-Signature": sigForOther });
+  const sigForOther = await P.headers(P.paid("someoneelse000000000000000000000"));
+  r = await post(WORKER + "/webhook", body, sigForOther);
   check("webhook: a signature for different content is rejected", r.status === 401, r.status);
 
   // Truncated signature must not pass a prefix comparison.
-  const good = await sign(body);
-  r = await post(WORKER + "/webhook", body, { "X-Signature": good.slice(0, 32) });
+  r = await post(WORKER + "/webhook", body, await P.truncated(body));
   check("webhook: a truncated signature is rejected", r.status === 401, r.status);
 
   const s = await state();
@@ -151,8 +227,8 @@ await fetch(BASE + "/__pay/reset");
 /* ---------- 3 — the happy path ---------- */
 
 {
-  const body = webhookBody(REF, "paid");
-  const r = await post(WORKER + "/webhook", body, { "X-Signature": await sign(body) });
+  const body = P.paid(REF);
+  const r = await post(WORKER + "/webhook", body, await P.headers(body));
   const j = await r.json();
   check("webhook: a correctly signed order is accepted", r.status === 200, r.status);
   check("webhook: the response names the unlocked reference", j.unlocked === REF, JSON.stringify(j));
@@ -161,11 +237,11 @@ await fetch(BASE + "/__pay/reset");
   check("kv: the order was recorded", s.orders.length === 1 && s.orders[0].key === "order:" + REF,
     JSON.stringify(s.orders));
   check("kv: the record carries the provider and a timestamp",
-    s.orders[0].value.provider === "lemon_squeezy" && !isNaN(Date.parse(s.orders[0].value.at)),
+    s.orders[0].value.provider === PROVIDER && !isNaN(Date.parse(s.orders[0].value.at)),
     JSON.stringify(s.orders[0].value));
 
   // Providers retry webhooks; a retry must not break anything.
-  const again = await post(WORKER + "/webhook", body, { "X-Signature": await sign(body) });
+  const again = await post(WORKER + "/webhook", body, await P.headers(body));
   check("webhook: a retry is accepted", again.status === 200, again.status);
   const s2 = await state();
   check("kv: a retry does not duplicate the order", s2.orders.length === 1, s2.orders.length);
@@ -174,19 +250,16 @@ await fetch(BASE + "/__pay/reset");
 /* ---------- 4 — events that must not unlock ---------- */
 
 {
-  const unpaid = webhookBody("unpaidref00000000000000000000000", "pending");
-  let r = await post(WORKER + "/webhook", unpaid, { "X-Signature": await sign(unpaid) });
+  const unpaid = P.unpaid("unpaidref00000000000000000000000");
+  let r = await post(WORKER + "/webhook", unpaid, await P.headers(unpaid));
   check("webhook: an unpaid order does not unlock", (await r.json()).unpaid === true, r.status);
 
-  const other = JSON.stringify({ meta: { event_name: "subscription_cancelled" }, data: {} });
-  r = await post(WORKER + "/webhook", other, { "X-Signature": await sign(other) });
+  const other = P.otherEvent();
+  r = await post(WORKER + "/webhook", other, await P.headers(other));
   check("webhook: an unrelated event is ignored", (await r.json()).ignored === true, r.status);
 
-  const noRef = JSON.stringify({
-    meta: { event_name: "order_created", custom_data: {} },
-    data: { attributes: { status: "paid" } }
-  });
-  r = await post(WORKER + "/webhook", noRef, { "X-Signature": await sign(noRef) });
+  const noRef = P.noRef();
+  r = await post(WORKER + "/webhook", noRef, await P.headers(noRef));
   check("webhook: a paid order with no reference is ignored", (await r.json()).no_ref === true, r.status);
 
   const s = await state();

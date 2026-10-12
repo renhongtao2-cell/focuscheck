@@ -26,7 +26,8 @@
       if (stored) return stored;
     } catch (e) {}
 
-    if (cfg.ALLOW_DEMO_UNLOCK !== false && p.get("unlocked") === "1") return "demo";
+    // The demo flag is not a token: it is a local preview mode, and report.js
+    // has already unlocked for it. Sending "demo" here would just earn a 403.
     return null;
   }
 
@@ -131,19 +132,36 @@
     }
   }
 
+  /*
+   * Statuses the Worker can only produce *after* checkAccess() has passed.
+   *
+   * This distinction is the whole point. A paying customer whose generation
+   * failed on the LLM side (500/502/504) still paid, and must still get the
+   * report. Only 403 means "no order" — and a request that never got a response
+   * at all stays locked, otherwise going offline would be a way in.
+   */
+  var ACCESS_GRANTED = { 200: 1, 500: 1, 502: 1, 504: 1 };
+
   function run() {
     var doc = document.getElementById("rpDoc");
     if (!doc || doc.classList.contains("hidden")) return; // empty state or no answers
 
+    var R = window.FocusCheckReport;
+
+    // Sample previews: report.js already unlocked, and there is nothing to verify.
+    if (R && R.isPreview()) return;
+
+    // No order reference — report.js has already locked it as unpaid.
     var token = accessToken();
-    if (!token) return;                                   // not unlocked — template only
-    if (!api) return;                                     // no Worker configured
+    if (!token) return;
+
+    if (!api) { if (R) R.lockReport("unconfigured"); return; }
 
     var answers = getAnswers();
     if (!answers) return;
 
     ensureKeyframes();
-    banner(spinner() + " <span>Personalising your report…</span>", "info");
+    banner(spinner() + " <span>Checking your order…</span>", "info");
 
     var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
     var timer = setTimeout(function () {
@@ -155,6 +173,7 @@
         clearTimeout(timer);
 
         if (r.status === 200 && r.data && r.data.ok && r.data.report) {
+          if (R) R.unlockReport();
           inject(r.data.report);
           banner(
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" ' +
@@ -166,20 +185,36 @@
           return;
         }
 
-        // Anything other than success: keep the template report, explain why.
-        var msg = "We couldn't personalise this report right now, so you're seeing the standard version.";
-        if (r.status === 403) msg = "This report link isn't valid any more. You're seeing the standard version.";
-        if (r.status === 502 || r.status === 504) msg = "The report service is busy. You're seeing the standard version — reload to try again.";
-        if (r.status === 500 && r.data && r.data.error === "server_not_configured") {
-          msg = "The report service isn't configured yet. You're seeing the standard version.";
+        if (r.status === 403) {
+          if (R) R.lockReport("invalid");
+          return;
         }
-        banner(esc(msg), "error");
+
+        if (ACCESS_GRANTED[r.status]) {
+          // The order is good; only the personalisation failed. They paid, so
+          // they get the report.
+          if (R) R.unlockReport();
+          var msg = "We couldn't personalise this report right now, so you're seeing the standard version.";
+          if (r.status === 502 || r.status === 504) {
+            msg = "The report service is busy. You're seeing the standard version — reload to try again.";
+          }
+          if (r.status === 500 && r.data && r.data.error === "server_not_configured") {
+            msg = "Personalisation isn't switched on yet, so you're seeing the standard version.";
+          }
+          banner(esc(msg), "error");
+          return;
+        }
+
+        // 400 / 405 / 413 — the request never reached the access check. Stay locked.
+        banner(esc("Something went wrong opening this report. Reload to try again."), "error");
       })
       .catch(function () {
         clearTimeout(timer);
+        // No response at all. Staying locked is the safe failure: unlocking here
+        // would make a dropped connection a way past the paywall.
         banner(
-          esc("Couldn't reach the report service — you're seeing the standard version. " +
-              "Reload to try again."),
+          esc("Couldn't reach the report service. Your report is still locked — " +
+              "check your connection and reload."),
           "error"
         );
       });
