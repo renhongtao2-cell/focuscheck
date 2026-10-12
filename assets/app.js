@@ -211,12 +211,23 @@
         var ref = newRef();
         try { localStorage.setItem("focuscheck.ref", ref); } catch (err) {}
 
-        var sep = cfg.CHECKOUT_URL.indexOf("?") > -1 ? "&" : "?";
-        var param = cfg.CHECKOUT_REF_PARAM || "client_reference_id";
-        window.location.href =
-          cfg.CHECKOUT_URL + sep + encodeURIComponent(param) + "=" + encodeURIComponent(ref);
+        window.location.href = checkoutUrl(cfg.CHECKOUT_URL, cfg.CHECKOUT_REF_PARAM, ref);
       });
     }
+  }
+
+  /*
+   * Append the order reference to the provider's checkout link.
+   *
+   * Providers use different parameter names, and the link may already carry a
+   * query string, so the separator has to be chosen rather than assumed.
+   * Extracted from the click handler because getting this wrong means the
+   * customer pays and the report never unlocks.
+   */
+  function checkoutUrl(link, paramName, ref) {
+    var sep = link.indexOf("?") > -1 ? "&" : "?";
+    return link + sep + encodeURIComponent(paramName || "client_reference_id") +
+      "=" + encodeURIComponent(ref);
   }
 
   function newRef() {
@@ -233,4 +244,12 @@
     if (page === "test") initTest();
     if (page === "results") { initResults(); initModal(); }
   });
+
+  /* Exposed so the flow tests can exercise the payment handoff directly. */
+  window.FocusCheckApp = {
+    storageKey: STORAGE_KEY,
+    score: score,
+    newRef: newRef,
+    checkoutUrl: checkoutUrl
+  };
 })();
