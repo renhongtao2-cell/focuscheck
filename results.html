@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your results — FocusCheck</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230E7C5A'/><path d='M9 16.5l4.5 4.5L23 11' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body data-page="results">
+
+<header class="nav">
+  <div class="nav-in">
+    <a class="logo" href="index.html">
+      <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+      FocusCheck
+    </a>
+    <a class="btn btn-ghost" href="test.html" style="padding:9px 18px;font-size:14px">Retake test</a>
+  </div>
+</header>
+
+<section class="res-hero">
+  <div class="wrap">
+
+    <!-- no answers yet -->
+    <div id="empty" class="result-card hidden center">
+      <h2>No results yet</h2>
+      <p style="margin:12px 0 22px">Take the free 5-minute assessment to see your results.</p>
+      <a class="btn btn-primary" href="test.html">Start the free assessment</a>
+    </div>
+
+    <!-- results -->
+    <div id="content" class="hidden">
+
+      <div class="result-card">
+        <div id="badge" class="result-badge flag"></div>
+        <h2 id="resTitle"></h2>
+        <p id="resPara"></p>
+
+        <div class="score-row">
+          <span class="big" id="scoreBig">0</span>
+          <span class="of" id="scoreOf">of 6 criteria met</span>
+        </div>
+
+        <div class="bars">
+          <div class="bar-item">
+            <div class="top"><span>Inattention symptoms</span><span class="v" id="valInatt">0%</span></div>
+            <div class="bar-track"><div class="bar-fill" id="barInatt"></div></div>
+          </div>
+          <div class="bar-item">
+            <div class="top"><span>Hyperactivity &amp; impulsivity</span><span class="v" id="valHyper">0%</span></div>
+            <div class="bar-track"><div class="bar-fill" id="barHyper"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- paywall -->
+      <div class="paywall">
+        <div class="paywall-head">
+          <h3 style="font-size:20px">Your full report</h3>
+          <p class="small muted" style="margin-bottom:18px">A written, personalised analysis of what your scores mean — and what to do next.</p>
+        </div>
+
+        <div class="locked">
+          <div class="blur">
+            <h3>Your symptom profile</h3>
+            <p>Your responses point to a predominantly inattentive pattern. You scored highly on items relating to task initiation, sustained focus during low-stimulation work, and remembering routine obligations — while hyperactive and impulsive symptoms were comparatively mild.</p>
+            <p>In practice this often looks like starting many things and finishing few, feeling overwhelmed by administrative tasks, and a persistent sense of underachievement despite clear ability. It is one of the most commonly missed presentations in adults, particularly among people who developed strong compensatory habits early on.</p>
+            <p>Your attention difficulties appear to cluster around boring, repetitive, or unstructured work rather than tasks that are novel or high-stakes — a pattern that is characteristic of interest-based nervous systems.</p>
+            <h3>What tends to help</h3>
+            <p>Externalising time and tasks, breaking work into visible units, and building in accountability structures tend to be more effective than willpower-based strategies...</p>
+          </div>
+        </div>
+
+        <div class="paywall-cta">
+          <div class="inside">
+            <div class="h">Inside your report</div>
+            <ul>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Detailed written analysis of your profile</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Which areas of life are most affected</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Practical, evidence-informed strategies</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> How to talk to a clinician</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Downloadable PDF</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Lifetime access, no subscription</li>
+            </ul>
+          </div>
+
+          <div class="price-line">
+            <div class="p">One-time payment<br><b>$19</b> <span class="small muted">— no subscription</span></div>
+            <button class="btn btn-primary btn-lg" data-open-checkout>Unlock my report</button>
+          </div>
+
+          <div class="secure">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+            Secure checkout · Instant delivery · 14-day refund
+          </div>
+        </div>
+      </div>
+
+      <p class="small muted center" style="margin:26px auto 0;max-width:620px">
+        This result is a screening indication, not a diagnosis. Please consult a qualified
+        healthcare professional before making any decisions about your health.
+      </p>
+    </div>
+
+  </div>
+</section>
+
+<!-- checkout modal -->
+<div class="modal-bg" id="checkout">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <h3 id="mTitle">Unlock your full report</h3>
+    <p class="sub">Instant access after payment. One-time charge.</p>
+
+    <div class="field">
+      <label for="email">Email address</label>
+      <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+    </div>
+
+    <div class="order-sum">
+      <span>FocusCheck full report</span>
+      <b>$19.00</b>
+    </div>
+
+    <button class="btn btn-primary btn-block btn-lg" id="payBtn">Pay $19.00</button>
+
+    <div class="note hidden" id="demoNote">
+      <strong>Demo mode.</strong> No payment provider is connected yet. To go live, plug in a
+      checkout link from Paddle, Lemon Squeezy or Stripe — see the project README for the exact
+      one-line change.
+    </div>
+
+    <div class="modal-close" data-close>Cancel</div>
+  </div>
+</div>
+
+<script src="assets/questions.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
