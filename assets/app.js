@@ -198,9 +198,32 @@
     if (payBtn) {
       payBtn.addEventListener("click", function (e) {
         e.preventDefault();
-        document.getElementById("demoNote").classList.remove("hidden");
+        var cfg = window.FOCUSCHECK_CONFIG || {};
+
+        if (!cfg.CHECKOUT_URL) {
+          // Payment is not configured yet — explain instead of pretending.
+          document.getElementById("demoNote").classList.remove("hidden");
+          return;
+        }
+
+        // Remember a reference in this browser so the report can be unlocked
+        // when the provider sends the customer back.
+        var ref = newRef();
+        try { localStorage.setItem("focuscheck.ref", ref); } catch (err) {}
+
+        var sep = cfg.CHECKOUT_URL.indexOf("?") > -1 ? "&" : "?";
+        var param = cfg.CHECKOUT_REF_PARAM || "client_reference_id";
+        window.location.href =
+          cfg.CHECKOUT_URL + sep + encodeURIComponent(param) + "=" + encodeURIComponent(ref);
       });
     }
+  }
+
+  function newRef() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, "");
+    var s = "";
+    for (var i = 0; i < 32; i++) s += Math.floor(Math.random() * 16).toString(16);
+    return s;
   }
 
   /* ---------------- boot ---------------- */

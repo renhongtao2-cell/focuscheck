@@ -1,0 +1,14 @@
+{
+  "name": "focuscheck",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Free adult ADHD self-assessment with a paid, AI-generated report.",
+  "scripts": {
+    "test": "node test/worker.mjs && node test/integration.mjs",
+    "serve": "python -m http.server 8000"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.0"
+  }
+}

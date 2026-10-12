@@ -1,0 +1,38 @@
+name = "focuscheck-report"
+main = "index.js"
+compatibility_date = "2025-06-01"
+
+# ---------------------------------------------------------------------------
+# Plain configuration. Safe to commit.
+# ---------------------------------------------------------------------------
+[vars]
+PROVIDER = "openrouter"
+LLM_MODEL = "openai/gpt-4o-mini"
+
+# Comma-separated list of origins allowed to call this Worker.
+# Add your custom domain here once you have one.
+ALLOWED_ORIGINS = "https://renhongtao2-cell.github.io,http://localhost:8000"
+
+APP_URL = "https://renhongtao2-cell.github.io/focuscheck/"
+
+# Which payment provider sends webhooks here: lemon_squeezy | paddle | stripe
+PAYMENT_PROVIDER = "lemon_squeezy"
+
+# Leave "false" while you are still setting payment up — generation is then open.
+# Set to "true" once webhooks are live, so only paid orders can generate a report.
+REQUIRE_ACCESS = "false"
+
+# ---------------------------------------------------------------------------
+# Secrets — never put these here. Set them with:
+#   npx wrangler secret put LLM_API_KEY
+#   npx wrangler secret put PAYMENT_WEBHOOK_SECRET
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# KV namespace used to record paid orders.
+# Create it first:  npx wrangler kv namespace create ORDERS
+# then paste the returned id below.
+# ---------------------------------------------------------------------------
+# [[kv_namespaces]]
+# binding = "ORDERS"
+# id = "<paste-the-id-from-the-create-command>"

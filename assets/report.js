@@ -320,15 +320,7 @@
     var foot = document.getElementById("rpIdFoot");
     if (foot) foot.textContent = reportId;
 
-    // metrics
-    document.getElementById("mScreener").innerHTML =
-      r.positives + " <small>/ 6</small>";
-    document.getElementById("mScreenerD").textContent =
-      r.flagged ? "At or above the screening threshold" : "Below the screening threshold";
-    document.getElementById("mInatt").innerHTML = r.inattention + "<small>%</small>";
-    document.getElementById("mHyper").innerHTML = r.hyperactive + "<small>%</small>";
-
-    // section 1 — interpretation
+    // section 1 — interpretation (includes the three metric cards)
     var interp = document.getElementById("rpInterp");
     interp.innerHTML =
       "<p>You met <strong>" + r.positives + " of 6</strong> criteria on the Part A screener. " +
@@ -452,4 +444,13 @@
   }
 
   document.addEventListener("DOMContentLoaded", build);
+
+  /* Exposed so report-ai.js can reuse the same scoring and sample logic. */
+  window.FocusCheckReport = {
+    storageKey: KEY,
+    loadAnswers: loadAnswers,
+    scoreAnswers: computeScores,
+    pickProfile: pickProfile,
+    sampleAnswers: sampleAnswers
+  };
 })();

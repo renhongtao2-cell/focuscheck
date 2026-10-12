@@ -1,11 +1,12 @@
 # FocusCheck
 
-A free adult ADHD self-assessment with a paid, personalised report.
+A free adult ADHD self-assessment with a paid, AI-written report.
 
 Built on the **WHO Adult ADHD Self-Report Scale (ASRS-v1.1)** — a screening instrument,
 not a diagnostic tool.
 
-Pure static site: no build step, no framework, no backend. Deploy it anywhere.
+The site itself is static — no build step, no framework. The only server-side piece is a
+single Cloudflare Worker that holds the LLM key and verifies payments.
 
 ---
 
@@ -21,141 +22,140 @@ Pure static site: no build step, no framework, no backend. Deploy it anywhere.
 
 ```
 focuscheck/
-├── index.html
-├── test.html
-├── results.html
-├── report.html
-├── privacy.html
-├── terms.html
-├── .nojekyll
-└── assets/
-    ├── styles.css      # all styling (incl. print stylesheet)
-    ├── questions.js    # the 18 ASRS items + scoring rules
-    ├── app.js          # test flow, scoring, paywall modal
-    └── report.js       # report generator + content library
+├── index.html · test.html · results.html · report.html
+├── privacy.html · terms.html
+├── assets/
+│   ├── styles.css      # all styling (incl. print stylesheet)
+│   ├── questions.js    # the 18 ASRS items + scoring rules
+│   ├── app.js          # test flow, scoring, paywall, checkout redirect
+│   ├── report.js       # template report generator + content library
+│   ├── report-ai.js    # asks the Worker for the AI version, falls back safely
+│   └── config.js       # public config — Worker URL, checkout link
+├── worker/
+│   ├── index.js        # Cloudflare Worker: report generation
+│   ├── payments.js     # webhook verification + access control
+│   ├── wrangler.toml   # configuration (no secrets)
+│   └── README.md       # deploy + payment setup
+├── test/
+│   ├── worker.mjs      # 24 Worker unit tests, LLM mocked
+│   └── integration.mjs # 32 page tests in jsdom
+├── package.json
+└── .nojekyll
 ```
-
----
-
-## What's in the paid report
-
-`report.html` is the thing people pay for. It reads the user's saved answers and
-generates a personalised document:
-
-1. **What your scores mean** — the screener result plus a breakdown by symptom cluster
-2. **Your symptom profile** — one of four patterns (predominantly inattentive,
-   predominantly hyperactive-impulsive, combined, or sub-threshold) with a written overview,
-   plus the specific statements the user rated *Often* or *Very Often*
-3. **Where this tends to show up** — work, relationships, home, money, wellbeing
-4. **What actually helps** — six practical strategies matched to the profile
-5. **Talking to a clinician** — what to bring, what to expect, what to ask
-6. **A 30-day plan** — one change per week
-7. **Appendix** — the user's full set of responses, formatted to take to an appointment
-
-It includes a print stylesheet, so the *Download PDF* button produces a clean document
-via the browser's print-to-PDF.
-
-### Editing the report
-
-All copy lives in the `PROFILES` object at the top of `assets/report.js`. Each profile has
-`name`, `tagline`, `overview`, `areas` (five `[heading, paragraph]` pairs) and `strategies`
-(six `[title, description]` pairs). Edit the strings — no other code needs to change.
 
 ---
 
 ## Run locally
 
-Any static server works. From this folder:
-
 ```bash
-python -m http.server 8000
-# then open http://localhost:8000
+python -m http.server 8000     # or: npm run serve
+# open http://localhost:8000
 ```
-
-Opening `index.html` directly with `file://` also works, but a local server is closer
-to production behaviour.
 
 ---
 
-## Deploy to GitHub Pages
+## How the report works
+
+The report is generated in **two layers**:
+
+1. **Template** (`report.js`) — renders instantly from the user's answers, using a
+   content library for four symptom profiles. This always works, even with no backend.
+2. **AI upgrade** (`report-ai.js`) — if the visitor has unlocked the report and a
+   Worker is configured, it asks the Worker for an AI-written version and swaps in the
+   narrative sections.
+
+If generation fails for any reason — network, timeout, quota, bad access — **the
+template report stays on screen** and a short note explains why. The page never ends up
+empty.
+
+Preview the report without taking the test:
+
+```
+report.html?sample=inattentive
+report.html?sample=hyperactive
+report.html?sample=combined
+report.html?sample=mild
+```
+
+### Editing the report content
+
+All copy lives in the `PROFILES` object in `assets/report.js`. Each profile has `name`,
+`tagline`, `overview`, `areas` (five `[heading, paragraph]` pairs) and `strategies`
+(six `[title, description]` pairs).
+
+The AI prompt lives in `worker/index.js` (`SYSTEM_PROMPT`).
+
+---
+
+## AI report generation
+
+A static site cannot call an LLM directly — the API key would be visible to anyone who
+opens dev tools. So the call goes through `worker/`, a Cloudflare Worker that holds the
+key server-side.
+
+**See [`worker/README.md`](worker/README.md) for the full deploy guide.** The short version:
 
 ```bash
-git init
-git add .
-git commit -m "FocusCheck: initial release"
+cd worker
+npx wrangler login
+npx wrangler kv namespace create ORDERS      # paste the id into wrangler.toml
+npx wrangler secret put LLM_API_KEY
+npx wrangler deploy
+```
+
+Then set `API_ENDPOINT` in `assets/config.js` to the URL it prints. That's the only
+front-end change.
+
+---
+
+## Payment
+
+The Worker receives webhooks from your provider (Paddle, Lemon Squeezy or Stripe) and
+records paid orders in KV. The report page sends its order reference back, and the
+Worker refuses to generate unless that order exists.
+
+```
+Unlock → checkout (ref stored in browser) → webhook writes order:ref to KV
+       → redirect back → report requests generation with ref → KV check → report
+```
+
+Setup steps, including the exact `CHECKOUT_URL` and `CHECKOUT_REF_PARAM` values for each
+provider, are in [`worker/README.md`](worker/README.md).
+
+> **Important:** `REQUIRE_ACCESS` defaults to `"false"`, which means generation is open
+> while you are still setting payment up. Set it to `"true"` once a test payment works —
+> otherwise anyone can spend your LLM credits.
+
+---
+
+## Tests
+
+```bash
+npm install
+npm test
+```
+
+- `test/worker.mjs` — 24 tests covering validation, CORS, every upstream failure mode,
+  provider adapters, access control and the health endpoint. The LLM is mocked, so no
+  API key or network access is needed.
+- `test/integration.mjs` — 32 tests that load `report.html` in jsdom with the real
+  scripts, mock the Worker, and verify that AI content is injected correctly and that
+  every failure path still leaves a usable report on screen.
+
+---
+
+## Deploy the site to GitHub Pages
+
+```bash
+git init && git add . && git commit -m "FocusCheck"
 git branch -M main
-git remote add origin https://github.com/<your-username>/focuscheck.git
+git remote add origin https://github.com/<you>/focuscheck.git
 git push -u origin main
 ```
 
-Then in the repo: **Settings → Pages → Source: `main` / `(root)` → Save**.
+Then **Settings → Pages → Source: `main` / `(root)`**.
 
-Your site will be live at:
-
-```
-https://<your-username>.github.io/focuscheck/
-```
-
-The `.nojekyll` file is already included so that files starting with `_` are served correctly.
-
----
-
-## Connect a payment provider
-
-Right now the checkout is a **demo** — clicking *Pay* shows a notice instead of charging.
-
-Pick a **Merchant of Record** so they handle global sales tax and compliance for you.
-This is the simplest route for an individual founder without a US entity:
-
-| Provider | Notes |
-|---|---|
-| **Paddle** | Merchant of record, handles VAT/GST, payouts to many countries |
-| **Lemon Squeezy** | Merchant of record, very fast setup, good for digital products |
-| **Stripe** | Lowest fees, but needs a business entity in a supported country |
-
-### Wiring it up
-
-1. Create the product in your provider's dashboard and copy the checkout link.
-2. Open `results.html` and find the paywall button:
-
-   ```html
-   <button class="btn btn-primary btn-lg" data-open-checkout>Unlock my report</button>
-   ```
-
-3. Replace it with a link to your hosted checkout:
-
-   ```html
-   <a class="btn btn-primary btn-lg" href="https://YOUR-CHECKOUT-LINK">Unlock my report</a>
-   ```
-
-That's the whole change. The modal and `#demoNote` block can then be deleted.
-
-### Delivering the report after payment
-
-Three common approaches, easiest first:
-
-1. **Redirect to a success page** — most providers send the buyer to a URL you set.
-   Point it at a `report.html` you generate ahead of time.
-2. **Provider-hosted file** — attach the PDF as the product file; the provider emails it.
-3. **Serverless webhook** — for a personalised, generated-on-demand report, add a small
-   function (Cloudflare Workers, Vercel Functions) that calls an LLM and returns the report.
-
----
-
-## Customising
-
-**Questions and scoring** — edit `assets/questions.js`. Each item has `part` (A = the
-validated 6-item screener) and `domain` (`inattention` / `hyperactive`). The Part A
-thresholds live in `SCREENER_RULES`.
-
-**Price** — search for `$19` in `index.html` and `results.html`.
-
-**Brand** — colours are CSS variables at the top of `assets/styles.css`
-(`--brand`, `--brand-dark`, `--brand-soft`).
-
-**Turning this into a different assessment** — the engine is generic. Swap the questions,
-the scoring rules and the copy, and the same three pages work for burnout, attachment
-style, or any other scale.
+The Worker is deployed separately (`cd worker && npx wrangler deploy`).
 
 ---
 
@@ -169,8 +169,8 @@ This is a health-adjacent product. The following are not optional:
 - [ ] Add a crisis-line notice (e.g. 988 in the US, Samaritans 116 123 in the UK).
 - [ ] Replace `privacy.html` and `terms.html` with documents reviewed for your jurisdiction.
 - [ ] Add a GDPR/CCPA cookie banner if you add analytics or advertising.
-- [ ] Do not store more personal data than you need. Answers currently stay in
-      `localStorage` on the user's own device.
+- [ ] Set `REQUIRE_ACCESS = "true"` and `ALLOW_DEMO_UNLOCK: false` before going live.
+- [ ] Remove `report.html?unlocked=1` access before launch — it grants free reports.
 
 ---
 
@@ -179,8 +179,6 @@ This is a health-adjacent product. The following are not optional:
 The ASRS-v1.1 was developed by the World Health Organization. It is widely used in
 research and clinical screening. Confirm the current licensing terms for your
 commercial use before launch.
-
----
 
 ## Licence
 
