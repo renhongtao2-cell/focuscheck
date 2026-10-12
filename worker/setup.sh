@@ -41,14 +41,25 @@ echo
 # ---------------------------------------------------------------- 1. tooling
 command -v npx >/dev/null 2>&1 || fail "需要 Node.js（含 npx）。请先安装 Node 18+。"
 
+# Prefer a locally installed wrangler when one is available: installing it
+# globally can fail behind a restricted shell, and the exact version does not
+# matter for a deploy. Override with WRANGLER=/path/to/wrangler.
+WRANGLER="${WRANGLER:-npx --yes wrangler}"
+
 # ---------------------------------------------------------------- 2. login
-bold "1/5  检查 Cloudflare 登录状态"
-if npx --yes wrangler whoami >/dev/null 2>&1; then
-  ok "已登录"
+bold "1/5  检查 Cloudflare 认证状态"
+if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+  info "使用 CLOUDFLARE_API_TOKEN（非交互模式）"
+fi
+if $WRANGLER whoami >/dev/null 2>&1; then
+  ok "已认证"
 else
+  if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+    fail "CLOUDFLARE_API_TOKEN 无效或权限不足。需要 Workers Scripts:Edit、Workers KV Storage:Edit、Account Settings:Read。"
+  fi
   info "未登录，即将打开浏览器完成授权…"
-  npx --yes wrangler login
-  npx --yes wrangler whoami >/dev/null 2>&1 || fail "登录未完成，请重试"
+  $WRANGLER login
+  $WRANGLER whoami >/dev/null 2>&1 || fail "登录未完成，请重试"
   ok "登录成功"
 fi
 echo
@@ -59,7 +70,7 @@ if grep -qE '^[[:space:]]*\[\[kv_namespaces\]\]' "$WRANGLER_TOML"; then
   ok "wrangler.toml 里已经配置过 KV，跳过"
 else
   info "正在创建 ORDERS namespace…"
-  KV_OUT="$(npx --yes wrangler kv namespace create ORDERS 2>&1 || true)"
+  KV_OUT="$($WRANGLER kv namespace create ORDERS 2>&1 || true)"
   KV_ID="$(printf '%s' "$KV_OUT" | grep -oE 'id[[:space:]]*=[[:space:]]*"[a-f0-9]{32}"' | grep -oE '[a-f0-9]{32}' | head -1)"
 
   if [ -z "$KV_ID" ]; then
@@ -86,21 +97,35 @@ fi
 echo
 
 # ---------------------------------------------------------------- 4. secrets
-bold "3/5  设置 LLM API Key"
-info "粘贴你的 key（输入不会显示在屏幕上），然后回车："
-printf '  > '
-IFS= read -rs LLM_KEY
-echo
-[ -n "$LLM_KEY" ] || fail "没有输入 key"
+bold "3/5  设置密钥"
+if [ -n "${LLM_API_KEY:-}" ]; then
+  info "使用环境变量里的 LLM_API_KEY"
+else
+  info "粘贴你的 LLM API key（输入不会显示在屏幕上），然后回车："
+  printf '  > '
+  IFS= read -rs LLM_API_KEY
+  echo
+fi
+[ -n "$LLM_API_KEY" ] || fail "没有拿到 LLM API key"
 
-printf '%s' "$LLM_KEY" | npx --yes wrangler secret put LLM_API_KEY >/dev/null
+printf '%s' "$LLM_API_KEY" | $WRANGLER secret put LLM_API_KEY >/dev/null
 ok "LLM_API_KEY 已作为加密密钥保存"
-unset LLM_KEY
+unset LLM_API_KEY
+
+# The webhook secret only matters once a payment provider is connected, so it
+# is optional here rather than a prompt that blocks the first deploy.
+if [ -n "${PAYMENT_WEBHOOK_SECRET:-}" ]; then
+  printf '%s' "$PAYMENT_WEBHOOK_SECRET" | $WRANGLER secret put PAYMENT_WEBHOOK_SECRET >/dev/null
+  ok "PAYMENT_WEBHOOK_SECRET 已保存"
+  unset PAYMENT_WEBHOOK_SECRET
+else
+  info "未提供 PAYMENT_WEBHOOK_SECRET —— 接支付前记得补上"
+fi
 echo
 
 # ---------------------------------------------------------------- 5. deploy
 bold "4/5  部署 Worker"
-DEPLOY_OUT="$(npx --yes wrangler deploy 2>&1 || true)"
+DEPLOY_OUT="$($WRANGLER deploy 2>&1 || true)"
 WORKER_URL="$(printf '%s' "$DEPLOY_OUT" | grep -oE 'https://[a-zA-Z0-9._-]+\.workers\.dev' | head -1)"
 
 if [ -z "$WORKER_URL" ]; then
