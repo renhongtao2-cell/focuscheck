@@ -5,12 +5,26 @@
  * checks that AI content is injected and that every failure path still leaves a
  * usable report on screen.
  */
-import { JSDOM } from "jsdom";
+import { JSDOM, VirtualConsole } from "jsdom";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..") + path.sep;
+
+/*
+ * jsdom has no canvas backend, so every getContext() call emits a jsdomError.
+ * The report now draws a share card on every render, so those are dropped here
+ * rather than flooding the output. Real errors still surface.
+ */
+function quietConsole() {
+  const vc = new VirtualConsole();
+  vc.on("jsdomError", (err) => {
+    if (/getContext|toBlob|toDataURL|Not implemented/.test(err.message || "")) return;
+    console.error("jsdom:", err.message);
+  });
+  return vc;
+}
 
 let pass = 0, fail = 0;
 function check(name, cond, extra) {
@@ -43,6 +57,7 @@ function makeDom({ apiEndpoint, fetchImpl, url, storedRef }) {
     url: url || "https://example.com/report.html?sample=inattentive&unlocked=1",
     runScripts: "dangerously",
     pretendToBeVisual: true,
+    virtualConsole: quietConsole(),
     beforeParse(window) {
       window.AbortController = AbortController;
       if (storedRef) window.localStorage.setItem("focuscheck.ref", storedRef);
@@ -182,6 +197,134 @@ for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
     d.getElementById("rpProfile").textContent.trim().length > 5 &&
     d.getElementById("rpTable").innerHTML.includes("<tbody>"),
     d.getElementById("rpProfile").textContent);
+}
+
+/* 9 — the visual summary is driven by the real answers */
+{
+  const { dom } = makeDom({
+    apiEndpoint: "",
+    url: "https://example.com/report.html?sample=inattentive",
+    fetchImpl: async () => { throw new Error("nope"); }
+  });
+  await tick(200);
+  const d = dom.window.document;
+
+  const ring = d.getElementById("rpRing");
+  check("viz: ring rendered", ring.querySelectorAll("svg circle").length === 2);
+  check("viz: ring is flagged above threshold", ring.className.includes("flag"), ring.className);
+  check("viz: ring shows the screener count", ring.querySelector(".ctr .big").textContent === "4/6",
+    ring.querySelector(".ctr .big") && ring.querySelector(".ctr .big").textContent);
+  check("viz: ring label present", ring.querySelector(".ctr .lbl").textContent === "Part A criteria");
+  check("viz: ring threshold tag", ring.querySelector(".viz-ringtag").textContent === "At or above threshold",
+    ring.querySelector(".viz-ringtag").textContent);
+
+  const prog = ring.querySelector(".prog");
+  const dash = parseFloat(prog.getAttribute("stroke-dasharray"));
+  const off = parseFloat(prog.style.strokeDashoffset);
+  check("viz: ring animated to 4/6", Math.abs(off - dash * (1 - 4 / 6)) < 0.5, off + " of " + dash);
+
+  const dims = d.getElementById("rpDims");
+  const fills = dims.querySelectorAll(".fill");
+  check("viz: two dimension bars", fills.length === 2, fills.length);
+  check("viz: inattention bar is 94%", fills[0].getAttribute("data-w") === "94", fills[0].getAttribute("data-w"));
+  check("viz: hyperactivity bar is 25%", fills[1].getAttribute("data-w") === "25", fills[1].getAttribute("data-w"));
+  check("viz: bars animated to their value",
+    fills[0].style.width === "94%" && fills[1].style.width === "25%",
+    fills[0].style.width + " / " + fills[1].style.width);
+  check("viz: gap note explains the skew", dims.querySelector(".viz-gap").innerHTML.includes("Inattention"));
+
+  const partA = d.getElementById("rpHm").querySelectorAll(".hm-cell");
+  const partB = d.getElementById("rpHm2").querySelectorAll(".hm-cell");
+  check("viz: heatmap Part A has 6 cells", partA.length === 6, partA.length);
+  check("viz: heatmap Part B has 12 cells", partB.length === 12, partB.length);
+  check("viz: heatmap cell 1 is Very Often", partA[0].getAttribute("data-v") === "4", partA[0].getAttribute("data-v"));
+  check("viz: heatmap Part B starts at item 7", partB[0].textContent === "7", partB[0].textContent);
+  check("viz: heatmap cell 13 is Never", partB[6].getAttribute("data-v") === "0", partB[6].getAttribute("data-v"));
+  check("viz: heatmap cell has a readable tooltip",
+    partA[0].getAttribute("title").includes("Finishing the last 10%"), partA[0].getAttribute("title"));
+  check("viz: heatmap legend has 5 steps",
+    d.getElementById("rpHmLegend").querySelectorAll(".lg").length === 5);
+}
+
+/* 10 — a sub-threshold sample must not be drawn as flagged */
+{
+  const { dom } = makeDom({
+    apiEndpoint: "",
+    url: "https://example.com/report.html?sample=mild",
+    fetchImpl: async () => { throw new Error("nope"); }
+  });
+  await tick(200);
+  const d = dom.window.document;
+  const ring = d.getElementById("rpRing");
+  check("mild: ring not flagged", !ring.className.includes("flag"), ring.className);
+  const mildCount = parseInt(ring.querySelector(".ctr .big").textContent, 10);
+  check("mild: ring count is below the threshold of 4", mildCount < 4,
+    ring.querySelector(".ctr .big").textContent);
+  check("mild: below-threshold tag", ring.querySelector(".viz-ringtag").textContent === "Below threshold");
+  check("mild: gap note describes a matched pattern",
+    d.getElementById("rpDims").querySelector(".viz-gap").innerHTML.includes("close together"));
+}
+
+/* 11 — every section gets an icon */
+{
+  const { dom } = makeDom({
+    apiEndpoint: "",
+    url: "https://example.com/report.html?sample=combined",
+    fetchImpl: async () => { throw new Error("nope"); }
+  });
+  await tick(200);
+  const d = dom.window.document;
+  const heads = d.querySelectorAll(".rp-sec h2");
+  check("icons: 7 sections", heads.length === 7, heads.length);
+  check("icons: every section has one",
+    Array.from(heads).every(h => h.querySelector(".ico svg")),
+    Array.from(heads).map(h => h.textContent.trim().slice(0, 4)).join("|"));
+}
+
+/* 12 — the share block is built and stays privacy-safe */
+{
+  const { dom } = makeDom({
+    apiEndpoint: "",
+    url: "https://example.com/report.html?sample=inattentive",
+    fetchImpl: async () => { throw new Error("nope"); }
+  });
+  await tick(200);
+  const d = dom.window.document;
+  const share = d.getElementById("rpShare");
+
+  check("share: block rendered", share.innerHTML.length > 400);
+  check("share: canvas present", !!d.getElementById("shCanvas"));
+  check("share: download button", !!d.getElementById("shDownload"));
+  check("share: copy image button", !!d.getElementById("shCopyImg"));
+  check("share: copy link button", !!d.getElementById("shCopyLink"));
+  check("share: 5 networks offered", share.querySelectorAll("[data-net]").length === 5,
+    share.querySelectorAll("[data-net]").length);
+  check("share: marked no-print", share.className.includes("no-print"), share.className);
+
+  const S = dom.window.FocusCheckShare;
+  check("share: module exposed", !!S);
+  const text = S.shareText(S.getData());
+  check("share: text names the profile", text.includes("Inattentive"), text);
+  check("share: text carries no percentages", !text.includes("%"), text);
+  check("share: text carries no per-item answers", !/item\s*\d/i.test(text), text);
+
+  const leaked = share.innerHTML.replace(/<canvas[\s\S]*?<\/canvas>/g, "");
+  check("share: block leaks no scores", !leaked.includes("94%") && !leaked.includes("25%"), leaked.slice(0, 120));
+  check("share: site url derived from the page", S.siteUrl() === "https://example.com", S.siteUrl());
+}
+
+/* 13 — no report, no share block */
+{
+  const { dom } = makeDom({
+    apiEndpoint: "",
+    url: "https://example.com/report.html",
+    fetchImpl: async () => { throw new Error("nope"); }
+  });
+  await tick(200);
+  const d = dom.window.document;
+  check("empty state: share block left empty", d.getElementById("rpShare").innerHTML === "",
+    d.getElementById("rpShare").innerHTML.slice(0, 60));
+  check("empty state: no ring drawn", d.getElementById("rpRing").innerHTML === "");
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed");

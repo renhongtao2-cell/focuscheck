@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Tool and result pages are noindex — keep crawlers out of them entirely.
+Disallow: /report.html
+Disallow: /results.html
+Disallow: /test.html
+
+Sitemap: https://renhongtao2-cell.github.io/focuscheck/sitemap.xml

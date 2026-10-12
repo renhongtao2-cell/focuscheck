@@ -65,6 +65,41 @@
       </div>
     </div>
 
+    <!-- visual summary — rendered from the real answers by report.js -->
+    <div class="rp-viz">
+      <div class="rp-viz-head">
+        <span class="rp-viz-title">Your results at a glance</span>
+        <span class="rp-viz-sub">Derived from your 18 answers · WHO ASRS-v1.1</span>
+      </div>
+
+      <div class="rp-viz-grid">
+        <div class="viz-ring" id="rpRing"></div>
+        <div class="viz-dims" id="rpDims"></div>
+      </div>
+
+      <div class="viz-heat">
+        <div class="viz-heat-head">
+          <b>Answer intensity, statement by statement</b>
+          <span>Darker = reported more often</span>
+        </div>
+
+        <div class="hm-group">
+          <div class="hm-group-label">Part A &middot; the validated 6-item screener</div>
+          <div class="viz-heat-grid" id="rpHm"></div>
+        </div>
+
+        <div class="hm-group">
+          <div class="hm-group-label">Part B &middot; 12 additional symptoms</div>
+          <div class="viz-heat-grid" id="rpHm2"></div>
+        </div>
+
+        <div class="viz-heat-legend" id="rpHmLegend"></div>
+        <p class="viz-heat-foot">Hover any cell to see the statement behind it. The <b>six Part A
+          items</b> are the ones that determine your screening score; Part B adds the detail behind
+          your profile.</p>
+      </div>
+    </div>
+
     <div class="rp-body">
 
       <section class="rp-sec">
@@ -147,6 +182,8 @@
 
     </div>
 
+    <div class="rp-share no-print" id="rpShare"></div>
+
     <div class="rp-foot">
       <p><strong>Medical disclaimer.</strong> This report is generated from a self-reported screening
         questionnaire and is provided for educational purposes. It is not a medical device, it does
@@ -166,6 +203,7 @@
 <script src="assets/questions.js"></script>
 <script src="assets/config.js"></script>
 <script src="assets/report.js"></script>
+<script src="assets/report-share.js"></script>
 <script src="assets/report-ai.js"></script>
 </body>
 </html>

@@ -55,5 +55,18 @@ window.FOCUSCHECK_CONFIG = {
   CHECKOUT_REF_PARAM: "checkout[custom][ref]",
 
   /* Where the provider should send the customer after a successful payment. */
-  RETURN_URL: "report.html"
+  RETURN_URL: "report.html",
+
+  /* ---------------------------------------------------------------- *
+   * Sharing
+   * ---------------------------------------------------------------- */
+
+  /*
+   * The public address of the site, used on the share card and in share links.
+   *
+   * Leave empty and it is derived from the current page URL, which is correct
+   * for GitHub Pages and most static hosts. Set it explicitly if the site is
+   * served from a sub-path or behind a custom domain.
+   */
+  SITE_URL: ""
 };

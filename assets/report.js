@@ -397,6 +397,138 @@
         return "<tr><td>" + q.id + "</td><td>" + esc(q.text) + "</td>" +
                "<td class=\"ans " + cls + "\">" + SCALE[v].label + "</td></tr>";
       }).join("") + "</tbody>";
+
+    // visual summary
+    decorateSections();
+    renderViz(r, answers);
+  }
+
+  /* ---------------- visual summary ---------------- */
+
+  var RING_R = 62;
+  var RING_C = 2 * Math.PI * RING_R;
+
+  var SECTION_ICONS = {
+    "01": '<path d="M3 3v18h18"/><path d="M7 15l3.5-4.5L14 14l4-6"/>',
+    "02": '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    "03": '<path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>',
+    "04": '<path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4.2 12.6c.6.5 1.2 1.4 1.2 2.4h6c0-1 .6-1.9 1.2-2.4A7 7 0 0 0 12 2Z"/>',
+    "05": '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/>',
+    "06": '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+    "07": '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>'
+  };
+
+  function decorateSections() {
+    var heads = document.querySelectorAll(".rp-sec h2");
+    Array.prototype.forEach.call(heads, function (h) {
+      if (h.querySelector(".ico")) return;
+      var n = h.querySelector(".n");
+      var path = n ? SECTION_ICONS[n.textContent.trim()] : null;
+      if (!path) return;
+      var span = document.createElement("span");
+      span.className = "ico";
+      span.setAttribute("aria-hidden", "true");
+      span.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + path + "</svg>";
+      h.insertBefore(span, h.firstChild);
+    });
+  }
+
+  function afterPaint(fn) {
+    if (typeof requestAnimationFrame !== "function") { fn(); return; }
+    requestAnimationFrame(function () { requestAnimationFrame(fn); });
+  }
+
+  function renderViz(r, answers) {
+    var pct = r.positives / 6;
+
+    // ---- screener ring ----
+    var ring = document.getElementById("rpRing");
+    if (ring) {
+      ring.className = "viz-ringwrap" + (r.flagged ? " flag" : "");
+      ring.innerHTML =
+        '<div class="viz-ring">' +
+          '<svg viewBox="0 0 158 158" aria-hidden="true">' +
+            '<circle class="track" cx="79" cy="79" r="' + RING_R + '"></circle>' +
+            '<circle class="prog" cx="79" cy="79" r="' + RING_R + '" ' +
+              'stroke-dasharray="' + RING_C.toFixed(1) + '" ' +
+              'stroke-dashoffset="' + RING_C.toFixed(1) + '"></circle>' +
+          "</svg>" +
+          '<div class="ctr">' +
+            '<div class="big">' + r.positives + "<small>/6</small></div>" +
+            '<div class="lbl">Part A criteria</div>' +
+          "</div>" +
+        "</div>" +
+        '<div class="viz-ringtag">' +
+          (r.flagged ? "At or above threshold" : "Below threshold") +
+        "</div>";
+      var prog = ring.querySelector(".prog");
+      afterPaint(function () {
+        prog.style.strokeDashoffset = (RING_C * (1 - pct)).toFixed(1);
+      });
+    }
+
+    // ---- two symptom clusters ----
+    var dims = document.getElementById("rpDims");
+    if (dims) {
+      dims.innerHTML =
+        dimRow("Inattention", r.inattention, "ia",
+          "9 items · focus, follow-through, memory, organisation") +
+        dimRow("Hyperactivity &amp; impulsivity", r.hyperactive, "hy",
+          "9 items · restlessness, difficulty unwinding, impulse control") +
+        '<div class="viz-gap">' + gapNote(r) + "</div>";
+      afterPaint(function () {
+        var fills = dims.querySelectorAll(".fill");
+        Array.prototype.forEach.call(fills, function (f) {
+          f.style.width = f.getAttribute("data-w") + "%";
+        });
+      });
+    }
+
+    // ---- 18-item heatmap, split by Part A / Part B ----
+    var cell = function (q) {
+      var v = typeof answers[q.id] === "number" ? answers[q.id] : 0;
+      var tip = q.id + ". " + shortLabel(q) + " — " + SCALE[v].label;
+      return '<div class="hm-cell" data-v="' + v + '" title="' + esc(tip) +
+             '" aria-label="' + esc(tip) + '">' + q.id + "</div>";
+    };
+    var hmA = document.getElementById("rpHm");
+    if (hmA) hmA.innerHTML = QUESTIONS.filter(function (q) { return q.part === "A"; }).map(cell).join("");
+    var hmB = document.getElementById("rpHm2");
+    if (hmB) hmB.innerHTML = QUESTIONS.filter(function (q) { return q.part === "B"; }).map(cell).join("");
+
+    var lg = document.getElementById("rpHmLegend");
+    if (lg) {
+      lg.innerHTML = SCALE.map(function (s) {
+        return '<span class="lg"><span class="sw" data-v="' + s.value + '"></span>' +
+               esc(s.label) + "</span>";
+      }).join("");
+    }
+  }
+
+  function dimRow(name, val, cls, note) {
+    return '<div class="viz-dim">' +
+      '<div class="top"><span class="nm">' + name + "</span>" +
+      '<span class="vl">' + val + "%</span></div>" +
+      '<div class="track"><div class="fill ' + cls + '" data-w="' + val + '"></div></div>' +
+      '<div class="note">' + note + "</div>" +
+    "</div>";
+  }
+
+  function gapNote(r) {
+    var d = r.inattention - r.hyperactive;
+    var a = Math.abs(d);
+    // Keep the 12-point threshold in step with pickProfile(), so the graphic and
+    // the written profile can never disagree.
+    if (a < 12) {
+      return "Your two clusters are <b>close together</b> (" + a + " points apart). Neither " +
+        "clearly dominates the other, which is what makes this read as a combined pattern.";
+    }
+    var lead = d > 0 ? "Inattention" : "Hyperactivity and impulsivity";
+    var trail = d > 0 ? "hyperactivity and impulsivity" : "inattention";
+    return "<b>" + lead + "</b> sits " + a + " points above " + trail + ", and that gap is what " +
+      "makes your result read as a predominantly " + (d > 0 ? "inattentive" : "hyperactive-impulsive") +
+      " pattern rather than a mixed one.";
   }
 
   function shortLabel(q) {
