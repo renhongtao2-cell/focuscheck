@@ -243,36 +243,37 @@ async function run() {
   log("report.html: the free summary is still shown", gated.ring === 2, gated.ring);
   await evaluate("localStorage.clear()");
 
+  /*
+   * ?sample= must NOT unlock on a published host. It is a local preview; if it
+   * worked here, one guessed query string plus the Download PDF button would
+   * give away the entire paid report.
+   */
   await goto(BASE + "/report.html?sample=combined");
   await sleep(1200);
-  const rep = await evaluate(`(() => ({
-    doc: !document.getElementById('rpDoc').classList.contains('hidden'),
-    profile: document.getElementById('rpProfile').textContent,
+  const sampleOnLive = await evaluate(`(() => ({
+    body: !!document.querySelector('.rp-body'),
+    sections: document.querySelectorAll('.rp-sec').length,
+    paywall: (function () {
+      var l = document.getElementById('rpLock');
+      return l && !l.classList.contains('hidden') ? l.textContent : '';
+    })(),
     ring: document.querySelectorAll('#rpRing svg circle').length,
-    tag: document.querySelector('.viz-ringtag')?.textContent || '',
     cellsA: document.querySelectorAll('#rpHm .hm-cell').length,
     cellsB: document.querySelectorAll('#rpHm2 .hm-cell').length,
-    icons: document.querySelectorAll('.rp-sec h2 .ico').length,
-    sections: document.querySelectorAll('.rp-sec').length,
-    rows: document.querySelectorAll('#rpTable tbody tr').length,
     shareW: document.getElementById('shCanvas')?.width || 0,
-    nets: document.querySelectorAll('[data-net]').length,
-    blank: document.getElementById('rpInterp').innerHTML.length < 100 ||
-           document.getElementById('rpAreas').innerHTML.length < 100
+    nets: document.querySelectorAll('[data-net]').length
   }))()`);
-
-  log("report.html: renders for the sample profile", rep.doc === true, rep.doc);
-  log("report.html: no section left blank", rep.blank === false, rep.blank);
-  log("report.html: profile named", rep.profile.includes("Combined"), rep.profile);
-  log("report.html: score ring drawn", rep.ring === 2, rep.ring);
-  log("report.html: ring status tag", rep.tag === "At or above threshold", rep.tag);
-  log("report.html: heatmap is 6 + 12 cells", rep.cellsA === 6 && rep.cellsB === 12,
-    rep.cellsA + " + " + rep.cellsB);
-  log("report.html: seven sections with icons", rep.sections === 7 && rep.icons === 7,
-    rep.sections + " sections, " + rep.icons + " icons");
-  log("report.html: appendix has 18 rows", rep.rows === 18, rep.rows);
-  log("report.html: share card drawn at 1080px", rep.shareW === 1080, rep.shareW);
-  log("report.html: five share targets", rep.nets === 5, rep.nets);
+  log("report.html: ?sample= does not unlock on the live host", sampleOnLive.body === false,
+    sampleOnLive.body);
+  log("report.html: ?sample= on the live host gets the paywall",
+    sampleOnLive.paywall.indexOf('$19') > -1, sampleOnLive.paywall.slice(0, 60));
+  log("report.html: ?sample= on the live host gets no sections",
+    sampleOnLive.sections === 0, sampleOnLive.sections);
+  log("report.html: free tier still renders there", sampleOnLive.ring === 2, sampleOnLive.ring);
+  log("report.html: heatmap is 6 + 12 cells", sampleOnLive.cellsA === 6 && sampleOnLive.cellsB === 12,
+    sampleOnLive.cellsA + " + " + sampleOnLive.cellsB);
+  log("report.html: share card drawn at 1080px", sampleOnLive.shareW === 1080, sampleOnLive.shareW);
+  log("report.html: five share targets", sampleOnLive.nets === 5, sampleOnLive.nets);
 
   /* ---- content page ---- */
   await goto(BASE + "/adhd-inattentive-type.html");

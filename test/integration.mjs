@@ -155,19 +155,36 @@ const okResponse = () => new Response(JSON.stringify({
     !bodyPresent(dom.window.document));
 }
 
-/* 3 — the sample previews stay fully open, for the sales pages */
+/* 3 — the sample preview works locally, and only locally */
 {
-  const { dom } = makeDom({
+  const local = makeDom({
+    apiEndpoint: "",
+    url: "http://localhost/report.html?sample=inattentive",
+    fetchImpl: async () => { throw new Error("nope"); }
+  });
+  await tick(200);
+  const dl = local.dom.window.document;
+  check("preview: works on a local hostname", bodyPresent(dl));
+  check("preview: no paywall locally", !paywallShown(dl));
+  check("preview: sections rendered", dl.querySelectorAll(".rp-sec").length === 7,
+    dl.querySelectorAll(".rp-sec").length);
+
+  /*
+   * The regression guard. ?sample= used to unlock the full report on any host,
+   * so one guessed query string — plus the Download PDF button — handed out the
+   * paid report for free.
+   */
+  const remote = makeDom({
     apiEndpoint: "",
     url: "https://example.com/report.html?sample=inattentive",
     fetchImpl: async () => { throw new Error("nope"); }
   });
   await tick(200);
-  const d = dom.window.document;
-  check("preview: body present", bodyPresent(d));
-  check("preview: no paywall", !paywallShown(d));
-  check("preview: sections rendered", d.querySelectorAll(".rp-sec").length === 7,
-    d.querySelectorAll(".rp-sec").length);
+  const dr = remote.dom.window.document;
+  check("preview: does NOT work on a published host", !bodyPresent(dr));
+  check("preview: published host gets the paywall", paywallShown(dr));
+  check("preview: published host gets no sections", dr.querySelectorAll(".rp-sec").length === 0,
+    dr.querySelectorAll(".rp-sec").length);
 }
 
 /* 4 — a paid order unlocks the report and gets the AI narrative */
@@ -288,7 +305,7 @@ const okResponse = () => new Response(JSON.stringify({
 for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
   const { dom } = makeDom({
     apiEndpoint: "",
-    url: "https://example.com/report.html?sample=" + kind,
+    url: "http://localhost/report.html?sample=" + kind,
     fetchImpl: async () => { throw new Error("nope"); }
   });
   await tick(200);
@@ -303,7 +320,7 @@ for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
 {
   const { dom } = makeDom({
     apiEndpoint: "",
-    url: "https://example.com/report.html?sample=inattentive",
+    url: "http://localhost/report.html?sample=inattentive",
     fetchImpl: async () => { throw new Error("nope"); }
   });
   await tick(200);
@@ -350,7 +367,7 @@ for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
 {
   const { dom } = makeDom({
     apiEndpoint: "",
-    url: "https://example.com/report.html?sample=mild",
+    url: "http://localhost/report.html?sample=mild",
     fetchImpl: async () => { throw new Error("nope"); }
   });
   await tick(200);
@@ -369,7 +386,7 @@ for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
 {
   const { dom } = makeDom({
     apiEndpoint: "",
-    url: "https://example.com/report.html?sample=combined",
+    url: "http://localhost/report.html?sample=combined",
     fetchImpl: async () => { throw new Error("nope"); }
   });
   await tick(200);
@@ -385,7 +402,7 @@ for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
 {
   const { dom } = makeDom({
     apiEndpoint: "",
-    url: "https://example.com/report.html?sample=inattentive",
+    url: "http://localhost/report.html?sample=inattentive",
     fetchImpl: async () => { throw new Error("nope"); }
   });
   await tick(200);
@@ -410,7 +427,7 @@ for (const kind of ["inattentive", "hyperactive", "combined", "mild"]) {
 
   const leaked = share.innerHTML.replace(/<canvas[\s\S]*?<\/canvas>/g, "");
   check("share: block leaks no scores", !leaked.includes("94%") && !leaked.includes("25%"), leaked.slice(0, 120));
-  check("share: site url derived from the page", S.siteUrl() === "https://example.com", S.siteUrl());
+  check("share: site url derived from the page", S.siteUrl() === "http://localhost", S.siteUrl());
 }
 
 /* 15 — no report, no share block */

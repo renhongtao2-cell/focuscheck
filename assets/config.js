@@ -27,11 +27,20 @@ window.FOCUSCHECK_CONFIG = {
    * Local preview escape hatch. While true, report.html?unlocked=1 shows the
    * full report without a payment.
    *
-   * Must be false in production — leaving it on means anyone who guesses the
-   * query string gets the paid report for free. Set it to true only in a local
-   * working copy you are not publishing.
+   * It only takes effect on a local hostname, so leaving it on cannot leak a
+   * paid report from a published site — but keep it false anyway.
    */
   ALLOW_DEMO_UNLOCK: false,
+
+  /*
+   * Whether report.html?sample=… may show the full report.
+   *
+   * Always available on a local hostname. Set this to true to allow it on a
+   * published site too — which means anyone who guesses the query string, and
+   * the "Download PDF" button, gets the entire paid report for free. Only do
+   * that if you are deliberately publishing a full example.
+   */
+  ALLOW_SAMPLE_PREVIEW: false,
 
   /* ---------------------------------------------------------------- *
    * Payment

@@ -444,14 +444,28 @@
   function config() { return window.FOCUSCHECK_CONFIG || {}; }
 
   /*
-   * Modes that never touch the network: the sample previews used on the sales
-   * pages, and the local demo flag. Both are for showing the report off, not
-   * for reading someone's own result for free.
+   * Modes that bypass the gate entirely.
+   *
+   * The sample previews exist so the report can be inspected while you build
+   * it. They must never work on a published site: ?sample= would hand the whole
+   * paid report to anyone who guessed the query string, and the "Download PDF"
+   * button would turn that into a free copy. Same for the demo flag.
+   *
+   * So both are restricted to a local hostname. A config flag can re-enable the
+   * sample preview deliberately, but the demo unlock stays local-only — that is
+   * the one that would hand out a paid report.
    */
+  function isLocalHost() {
+    var h = window.location.hostname;
+    return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "";
+  }
+
   function isPreview() {
     var p = new URLSearchParams(window.location.search);
-    if (p.get("sample")) return true;
-    if (config().ALLOW_DEMO_UNLOCK !== false && p.get("unlocked") === "1") return true;
+    var cfg = config();
+
+    if (p.get("sample") && (isLocalHost() || cfg.ALLOW_SAMPLE_PREVIEW === true)) return true;
+    if (p.get("unlocked") === "1" && cfg.ALLOW_DEMO_UNLOCK === true && isLocalHost()) return true;
     return false;
   }
 
