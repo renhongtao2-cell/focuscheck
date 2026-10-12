@@ -253,6 +253,30 @@
     return PROFILES.mild;
   }
 
+  /*
+   * Sample answers for previewing the report without taking the test.
+   * Usage: report.html?sample=inattentive | hyperactive | combined | mild
+   */
+  function sampleAnswers(kind) {
+    var cfg = {
+      inattentive: { ia: 4, hy: 1 },
+      hyperactive: { ia: 2, hy: 4 },
+      combined:    { ia: 4, hy: 4 },
+      mild:        { ia: 1, hy: 1 }
+    }[kind] || { ia: 4, hy: 1 };
+
+    var out = {};
+    var seen = { inattention: 0, hyperactive: 0 };
+    var jitter = [0, 1, 0, -1, 0, 1, 0, 0, -1];
+
+    QUESTIONS.forEach(function (q) {
+      var base = q.domain === "inattention" ? cfg.ia : cfg.hy;
+      var i = seen[q.domain]++;
+      out[q.id] = Math.max(0, Math.min(4, base + jitter[i % jitter.length]));
+    });
+    return out;
+  }
+
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
@@ -266,7 +290,9 @@
   /* ---------------- build ---------------- */
 
   function build() {
-    var answers = loadAnswers();
+    var params = new URLSearchParams(window.location.search);
+    var sample = params.get("sample");
+    var answers = sample ? sampleAnswers(sample) : loadAnswers();
     var empty = document.getElementById("rpEmpty");
     var doc = document.getElementById("rpDoc");
 
@@ -275,6 +301,11 @@
       return;
     }
     doc.classList.remove("hidden");
+
+    if (sample) {
+      var banner = document.getElementById("rpSample");
+      if (banner) banner.classList.remove("hidden");
+    }
 
     var r = computeScores(answers);
     var p = pickProfile(r);
