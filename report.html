@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your full report — FocusCheck</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230E7C5A'/><path d='M9 16.5l4.5 4.5L23 11' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="nav no-print">
+  <div class="nav-in">
+    <a class="logo" href="index.html">
+      <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+      FocusCheck
+    </a>
+    <a class="link-back" href="results.html">← Back to results</a>
+  </div>
+</header>
+
+<div class="report-shell">
+
+  <div class="report-actions no-print">
+    <span class="small muted">Your personalised report · one-time purchase</span>
+    <button class="btn btn-ghost" onclick="window.print()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
+      Download PDF
+    </button>
+  </div>
+
+  <!-- empty state -->
+  <div id="rpEmpty" class="report-doc hidden" style="padding:60px 46px;text-align:center">
+    <h2 style="font-size:22px;margin-bottom:10px">No report yet</h2>
+    <p class="muted" style="margin-bottom:22px">Complete the assessment first and your report will appear here.</p>
+    <a class="btn btn-primary" href="test.html">Take the free assessment</a>
+  </div>
+
+  <!-- report -->
+  <article class="report-doc hidden" id="rpDoc">
+
+    <div class="rp-cover">
+      <div class="brand">
+        <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+        FocusCheck · Adult ADHD Screening Report
+      </div>
+      <h1 id="rpProfile">Your symptom profile</h1>
+      <p class="sub" id="rpTagline"></p>
+      <div class="rp-meta">
+        <div>Generated <b id="rpDate"></b></div>
+        <div>Report ID <b id="rpId"></b></div>
+        <div>Instrument <b>WHO ASRS-v1.1</b></div>
+      </div>
+    </div>
+
+    <div class="rp-body">
+
+      <section class="rp-sec">
+        <h2><span class="n">01</span>What your scores mean</h2>
+        <div id="rpInterp"></div>
+      </section>
+
+      <section class="rp-sec">
+        <h2><span class="n">02</span>Your symptom profile</h2>
+        <h3 id="rpProfileName"></h3>
+        <p id="rpOverview"></p>
+        <div id="rpSignals"></div>
+      </section>
+
+      <section class="rp-sec">
+        <h2><span class="n">03</span>Where this tends to show up</h2>
+        <div id="rpAreas"></div>
+      </section>
+
+      <section class="rp-sec">
+        <h2><span class="n">04</span>What actually helps</h2>
+        <div id="rpStrategies"></div>
+      </section>
+
+      <section class="rp-sec">
+        <h2><span class="n">05</span>Talking to a clinician</h2>
+        <p>If your result was at or above the screening threshold, the most useful next step is a
+          conversation with a doctor or psychologist. Many people delay this for years because they
+          are not sure their experience is &ldquo;serious enough&rdquo;. Screening results give you a
+          concrete starting point.</p>
+
+        <h3>What to bring</h3>
+        <ul>
+          <li><b>This report</b>, including the appendix of your individual responses.</li>
+          <li><b>Concrete examples</b> — two or three specific situations where symptoms caused a
+            real problem at work, at home, or in a relationship.</li>
+          <li><b>Childhood history</b>, if you can recall it. ADHD symptoms typically have roots in
+            childhood, and clinicians will ask. School reports, old comments from teachers, or a
+            parent&rsquo;s recollection are genuinely useful.</li>
+          <li><b>Your timeline</b> — when the difficulties started, and whether they have been
+            lifelong or recent. Recent onset points to different causes.</li>
+        </ul>
+
+        <h3>What to expect</h3>
+        <ul>
+          <li>A clinical interview covering symptoms, history and daily impact.</li>
+          <li>Standardised rating scales — often the same ASRS you just completed, plus others.</li>
+          <li>Questions that rule out other explanations: sleep disorders, anxiety, depression,
+            thyroid problems, and in some cases learning difficulties.</li>
+          <li>Usually more than one appointment. A good assessment is not a five-minute form.</li>
+        </ul>
+
+        <h3>Questions worth asking</h3>
+        <ul>
+          <li>Do my symptoms meet the criteria, and which presentation fits best?</li>
+          <li>What else could explain these symptoms, and how would we tell the difference?</li>
+          <li>What are the treatment options, and what does the evidence say about each?</li>
+          <li>What should I expect from medication, therapy, or both — and on what timeline?</li>
+          <li>What can I do in the meantime that is likely to help?</li>
+        </ul>
+
+        <div class="callout warn">
+          <strong>Important.</strong> A screening result is not a diagnosis, and it cannot rule a
+          condition in or out. Only a qualified professional can do that, and only after a proper
+          evaluation. Use this report to start a conversation — not to end one.
+        </div>
+      </section>
+
+      <section class="rp-sec">
+        <h2><span class="n">06</span>Your 30-day plan</h2>
+        <p>One change per week. Doing a single thing consistently beats attempting everything at once.</p>
+        <div id="rpPlan"></div>
+      </section>
+
+      <section class="rp-sec">
+        <h2><span class="n">07</span>Appendix: your responses</h2>
+        <p>Your complete answers to all 18 statements. Bring this to any clinical appointment.</p>
+        <table class="rp-table" id="rpTable"></table>
+      </section>
+
+    </div>
+
+    <div class="rp-foot">
+      <p><strong>Medical disclaimer.</strong> This report is generated from a self-reported screening
+        questionnaire and is provided for educational purposes. It is not a medical device, it does
+        not provide a diagnosis, and it cannot replace an evaluation by a qualified healthcare
+        professional. If you are struggling with your mental health, please consult a doctor or
+        licensed mental health professional. If you are in crisis or having thoughts of self-harm,
+        contact your local emergency services or a crisis helpline immediately.</p>
+      <p style="margin-top:12px"><strong>Instrument.</strong> The Adult ADHD Self-Report Scale
+        (ASRS-v1.1) Symptom Checklist was developed in conjunction with the World Health
+        Organization, and is widely used in adult ADHD research and clinical screening.</p>
+      <p style="margin-top:12px">© 2026 FocusCheck · Report ID <span id="rpIdFoot"></span></p>
+    </div>
+
+  </article>
+</div>
+
+<script src="assets/questions.js"></script>
+<script src="assets/report.js"></script>
+</body>
+</html>

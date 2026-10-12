@@ -16,6 +16,7 @@ Pure static site: no build step, no framework, no backend. Deploy it anywhere.
 | `index.html` | Landing page — hero, how it works, free vs paid comparison, FAQ |
 | `test.html` | 18-question assessment with progress bar and auto-advance |
 | `results.html` | Scored result + blurred report preview + `$19` paywall |
+| `report.html` | **The paid deliverable** — a 7-section personalised report |
 | `privacy.html` / `terms.html` | Template legal pages (review before launch) |
 
 ```
@@ -23,14 +24,42 @@ focuscheck/
 ├── index.html
 ├── test.html
 ├── results.html
+├── report.html
 ├── privacy.html
 ├── terms.html
 ├── .nojekyll
 └── assets/
-    ├── styles.css      # all styling
+    ├── styles.css      # all styling (incl. print stylesheet)
     ├── questions.js    # the 18 ASRS items + scoring rules
-    └── app.js          # test flow, scoring, paywall modal
+    ├── app.js          # test flow, scoring, paywall modal
+    └── report.js       # report generator + content library
 ```
+
+---
+
+## What's in the paid report
+
+`report.html` is the thing people pay for. It reads the user's saved answers and
+generates a personalised document:
+
+1. **What your scores mean** — the screener result plus a breakdown by symptom cluster
+2. **Your symptom profile** — one of four patterns (predominantly inattentive,
+   predominantly hyperactive-impulsive, combined, or sub-threshold) with a written overview,
+   plus the specific statements the user rated *Often* or *Very Often*
+3. **Where this tends to show up** — work, relationships, home, money, wellbeing
+4. **What actually helps** — six practical strategies matched to the profile
+5. **Talking to a clinician** — what to bring, what to expect, what to ask
+6. **A 30-day plan** — one change per week
+7. **Appendix** — the user's full set of responses, formatted to take to an appointment
+
+It includes a print stylesheet, so the *Download PDF* button produces a clean document
+via the browser's print-to-PDF.
+
+### Editing the report
+
+All copy lives in the `PROFILES` object at the top of `assets/report.js`. Each profile has
+`name`, `tagline`, `overview`, `areas` (five `[heading, paragraph]` pairs) and `strategies`
+(six `[title, description]` pairs). Edit the strings — no other code needs to change.
 
 ---
 
