@@ -41,7 +41,8 @@ focuscheck/
 │   ├── config.js         # public config — Worker URL, checkout link, site URL
 │   └── og/               # generated 1200x630 Open Graph images
 ├── tools/
-│   └── make_og_images.py # regenerates assets/og/ (npm run og)
+│   ├── make_og_images.py # regenerates assets/og/ (npm run og)
+│   └── live-check.mjs    # drives the deployed site in a real browser
 ├── worker/
 │   ├── index.js          # Cloudflare Worker: report generation
 │   ├── payments.js       # webhook verification + access control
@@ -49,6 +50,7 @@ focuscheck/
 │   └── README.md         # deploy + payment setup
 ├── test/
 │   ├── worker.mjs        # 24 Worker unit tests, LLM mocked
+│   ├── flow.mjs          # 57 free-flow tests (test -> results -> checkout)
 │   ├── integration.mjs   # 71 report-page tests in jsdom
 │   └── pages.mjs         # 109 metadata / OG image / link checks
 ├── package.json
@@ -243,7 +245,26 @@ npm test
   header), no broken internal links, sibling-article cross-linking, and sitemap/robots
   consistency.
 
-Total: **204 tests**, none of which need network access or an API key.
+Total: **261 tests**, none of which need network access or an API key.
+
+### Checking the deployed site
+
+The suites above run against the files on disk. To verify the *deployed* site — the
+question "did my deploy actually work?" — there is a separate harness that drives it in a
+real browser over the DevTools Protocol:
+
+```bash
+npm run check:live
+BASE_URL=https://example.com/ PROXY=http://127.0.0.1:8080 npm run check:live
+```
+
+It launches headless Chrome, walks the free assessment end to end (18 questions, stepping
+back and forward), asserts the score at the screening threshold, opens the checkout modal,
+and inspects the rendered report — ring, heatmap, icons, appendix, share card. It exits
+non-zero on any failure, so it can gate a deploy.
+
+`PROXY` is optional; set it if your network needs one. Set `CHROME` if Chrome is not in a
+standard location.
 
 ---
 
