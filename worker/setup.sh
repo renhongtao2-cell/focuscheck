@@ -153,14 +153,21 @@ bold "完成。"
 cat <<EOF
 
   下一步：
-    1. 本地确认    python -m http.server 8000
-                   打开 http://localhost:8000/report.html?unlocked=1
-                   应该能看到顶部出现「written for your specific answers」
+    1. 本地确认
+       python -m http.server 8000
+       先打开 http://localhost:8000/test.html 做完 18 题（答案存在浏览器里），
+       再打开 http://localhost:8000/report.html?access=local-test
+       应该能看到顶部出现「written for your specific answers」。
+
+       为什么用 ?access=...：?sample= 和 ?unlocked=1 是本地预览模式，它们
+       不调用大模型（report-ai.js 会直接返回），所以验证不了生成通路。
+       而 REQUIRE_ACCESS 现在是 "false"，checkAccess() 直接放行 —— 随便一个
+       access 值都能通过，这正是它此刻的用途。
 
     2. 提交上线    git add -A && git commit -m "Connect LLM" && git push
 
   记住：现在生成接口是开放的（任何人都能调用，会消耗你的额度）。
   等支付跑通后，把 worker/wrangler.toml 里的 REQUIRE_ACCESS 改成 "true"，
-  再运行一次 npx wrangler deploy。
+  再运行一次 bash worker/setup.sh（或 npx wrangler deploy）。
 
 EOF
