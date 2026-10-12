@@ -93,7 +93,15 @@ A static site cannot call an LLM directly — the API key would be visible to an
 opens dev tools. So the call goes through `worker/`, a Cloudflare Worker that holds the
 key server-side.
 
-**See [`worker/README.md`](worker/README.md) for the full deploy guide.** The short version:
+**One-shot setup** — with a Cloudflare account and an LLM API key in hand, this does
+everything: login check, KV creation, secret storage, deploy, and writing the Worker URL
+into `assets/config.js`.
+
+```bash
+bash worker/setup.sh
+```
+
+**Or do it by hand** — see [`worker/README.md`](worker/README.md) for the full guide:
 
 ```bash
 cd worker
@@ -105,6 +113,9 @@ npx wrangler deploy
 
 Then set `API_ENDPOINT` in `assets/config.js` to the URL it prints. That's the only
 front-end change.
+
+> The site works without any of this — it just serves the template report instead of an
+> AI-written one.
 
 ---
 
