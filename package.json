@@ -5,8 +5,10 @@
   "type": "module",
   "description": "Free adult ADHD self-assessment with a paid, AI-generated report.",
   "scripts": {
-    "test": "node test/worker.mjs && node test/flow.mjs && node test/integration.mjs && node test/pages.mjs",
+    "test": "node test/worker.mjs && node test/flow.mjs && node test/integration.mjs && node test/pages.mjs && node test/payment.mjs",
     "check:live": "node tools/live-check.mjs",
+    "check:pay": "node tools/pay-check.mjs",
+    "sandbox": "node tools/dev-server.mjs",
     "og": "python tools/make_og_images.py",
     "serve": "python -m http.server 8000"
   },

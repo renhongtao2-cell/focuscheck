@@ -125,6 +125,12 @@ browser                provider              worker            KV
    CHECKOUT_URL: "https://yourstore.lemonsqueezy.com/checkout/buy/xxxxxxxx",
    CHECKOUT_REF_PARAM: "checkout[custom][ref]",
    ```
+
+   > `CHECKOUT_REF_PARAM` must match the parameter name you configure in your provider's
+   > dashboard. If they differ the customer is charged, the webhook arrives with no order
+   > reference, and **the report never unlocks** — and the customer has no way to tell why.
+   > Confirm it by taking one real payment before you turn on `REQUIRE_ACCESS`.
+
 7. **Once a test payment works**, turn on enforcement:
    ```toml
    REQUIRE_ACCESS = "true"

@@ -42,7 +42,9 @@ focuscheck/
 │   └── og/               # generated 1200x630 Open Graph images
 ├── tools/
 │   ├── make_og_images.py # regenerates assets/og/ (npm run og)
-│   └── live-check.mjs    # drives the deployed site in a real browser
+│   ├── live-check.mjs    # drives the deployed site in a real browser
+│   ├── dev-server.mjs    # payment sandbox: real Worker, in-memory KV, mocked LLM
+│   └── pay-check.mjs     # drives the paid flow in a real browser
 ├── worker/
 │   ├── index.js          # Cloudflare Worker: report generation
 │   ├── payments.js       # webhook verification + access control
@@ -52,7 +54,8 @@ focuscheck/
 │   ├── worker.mjs        # 24 Worker unit tests, LLM mocked
 │   ├── flow.mjs          # 57 free-flow tests (test -> results -> checkout)
 │   ├── integration.mjs   # 71 report-page tests in jsdom
-│   └── pages.mjs         # 109 metadata / OG image / link checks
+│   ├── pages.mjs         # 109 metadata / OG image / link checks
+│   └── payment.mjs       # 54 paid-chain tests against the sandbox
 ├── package.json
 └── .nojekyll
 ```
@@ -224,6 +227,31 @@ provider, are in [`worker/README.md`](worker/README.md).
 > while you are still setting payment up. Set it to `"true"` once a test payment works —
 > otherwise anyone can spend your LLM credits.
 
+### Try the whole paid flow without an account
+
+You do not need Cloudflare, an LLM key, or a provider account to exercise the paid chain.
+The sandbox runs the **real** Worker code — the same `createHandler()` that deploys — with
+an in-memory KV store and a mocked LLM, and it delivers a **genuinely signed webhook** to
+the real webhook handler rather than faking the unlock.
+
+```bash
+npm run sandbox          # http://localhost:8788
+```
+
+Open the site, take the assessment, click Unlock, and you land on the sandbox's checkout
+page. Clicking "Pay" fires a correctly-signed webhook at the Worker; the browser is
+redirected back and the report unlocks exactly as it would in production.
+
+`test/payment.mjs` (54 tests) drives this same chain over HTTP. `npm run check:pay` drives
+it in a real browser instead, from the first question to the unlocked AI narrative.
+
+> **The one thing to get right in production.** `CHECKOUT_REF_PARAM` in `assets/config.js`
+> must match the parameter name you configure in your provider's dashboard. If they differ,
+> the customer pays, the webhook arrives with no order reference, and **the report never
+> unlocks**. The sandbox derives that name from a single source and returns a 400 with a
+> diagnostic message if a checkout arrives without a reference — which is how the mismatch
+> was caught here.
+
 ---
 
 ## Tests
@@ -244,8 +272,14 @@ npm test
   lengths, canonical/OG/Twitter metadata, OG image dimensions (read straight from the PNG
   header), no broken internal links, sibling-article cross-linking, and sitemap/robots
   consistency.
+- `test/payment.mjs` — 54 tests that boot the payment sandbox and drive the paid chain over
+  HTTP: a signed webhook records the order, generation is refused without one, every
+  provider's signature format is accepted and a tampered body is rejected. It also
+  re-derives the pattern from the same answers on both sides — client and server each keep
+  their own copy of the thresholds, so a drift there would make the AI narrative contradict
+  the template report.
 
-Total: **261 tests**, none of which need network access or an API key.
+Total: **315 tests**, none of which need network access, an API key, or a payment account.
 
 ### Checking the deployed site
 
@@ -265,6 +299,16 @@ non-zero on any failure, so it can gate a deploy.
 
 `PROXY` is optional; set it if your network needs one. Set `CHROME` if Chrome is not in a
 standard location.
+
+### Checking the paid flow in a real browser
+
+```bash
+npm run check:pay
+```
+
+Same idea, but for the money path: it boots the sandbox, answers all 18 questions, unlocks,
+pays through the sandbox checkout, and asserts the AI narrative actually replaced the
+template sections — 24 checks, exiting non-zero on failure.
 
 ---
 
